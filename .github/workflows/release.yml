@@ -127,7 +127,7 @@ jobs:
       - name: Create Module Archive
         run: |
           cp -a ./static/. ./dist
-          zip ./module.zip ./dist/*                         
+          zip ./module.zip ./dist/* README.md LICENSE                      
 
 
       # Update the GitHub release with the manifest and module archive files.

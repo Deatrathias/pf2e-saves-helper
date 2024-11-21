@@ -1,14 +1,17 @@
 {
   "id": "pf2e-saves-helper",
   "title": "PF2e Saves Helper",
-  "version": "0.0.1",
+  "version": "#{VERSION}#",
   "socket": true,
   "compatibility": {
     "minimum": "12.331",
     "verified": "12.331"
   },
-  "url": "https://github.com/Deatrathias/pf2e-saves-helper",
-  "readme": "https://github.com/Deatrathias/pf2e-saves-helper/blob/main/README.md",
+  "url": "#{URL}#",
+  "readme": "README.md",
+  "license": "LICENSE",
+  "manifest": "#{MANIFEST}#",
+  "download": "#{DOWNLOAD}#",
   "relationships": {
     "systems": [
       {

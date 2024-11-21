@@ -123,8 +123,8 @@
 
 .pf2e-saves-helper .highlighted {
 	font-weight: bold;
-	border-color: var(--color-warm-2);
-	border-width: 2px;
+	border-color: var(--color-warm-2) !important;
+	border-width: 2px !important;
 	background-color: var(--color-light-3);
 }
 .pf2e-saves-helper .damage-application.already-applied button {

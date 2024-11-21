@@ -8,8 +8,8 @@
     "verified": "12.331"
   },
   "url": "#{URL}#",
-  "readme": "README.md",
-  "license": "LICENSE",
+  "readme": "https://github.com/Deatrathias/pf2e-saves-helper/blob/main/README.md",
+  "license": "https://github.com/Deatrathias/pf2e-saves-helper/blob/main/LICENSE",
   "manifest": "#{MANIFEST}#",
   "download": "#{DOWNLOAD}#",
   "relationships": {

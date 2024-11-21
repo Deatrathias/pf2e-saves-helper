@@ -94,7 +94,6 @@ function handleSaveRolled(message: SaveRolledMessage) {
     if (!game.user.isGM)
         return;
 
-    console.log("message received");
     ChatMessage.updateDocuments([{ _id: message.message, [`flags.${MODULE_NAME}.results.${uuidConvert(message.token)}`]: { degreeOfSuccess: message.degreeOfSuccess, rollValue: message.rollValue } }]);
 }
 
@@ -705,7 +704,7 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: JQuery) {
 
             let shieldBlockButton: HTMLButtonElement | undefined = undefined;
             if (htmlQuery(damageApplication, "button[data-action='shield-block']")) {
-                shieldBlockButton = createHTMLElement("button", { classes: ["dice-total-shield-btn", "tooltipstered"], innerHTML: `<span class="label">${game.i18n.localize("PF2E.DamageButton.ShieldBlockShort")}</<span>` });
+                shieldBlockButton = createHTMLElement("button", { dataset: { action: "shield-block" }, classes: ["dice-total-shield-btn", "tooltipstered"], innerHTML: `<span class="label">${game.i18n.localize("PF2E.DamageButton.ShieldBlockShort")}</<span>` });
                 if (shieldBlockButton) {
                     shieldBlockButton.type = "button";
                     shieldBlockButton.addEventListener("click", (event) => {

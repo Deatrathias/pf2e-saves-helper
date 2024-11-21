@@ -126,9 +126,9 @@ jobs:
       # your packaged module, add them here.
       - name: Create Module Archive
         run: |
-          cp -a ./static/. ./dist
-          zip ./module.zip -r ./dist/.* README.md LICENSE                      
-
+          cp -a ./static/. ./
+          cp -a ./dist/. ./
+          zip -r9 ./module.zip module.json lang/ scripts/ styles/ README.md LICENSE
 
       # Update the GitHub release with the manifest and module archive files.
       - name: Update Release With Files

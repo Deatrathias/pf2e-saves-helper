@@ -1,0 +1,43 @@
+{
+  "id": "pf2e-saves-helper",
+  "title": "PF2e Saves Helper",
+  "version": "0.0.1",
+  "socket": true,
+  "compatibility": {
+    "minimum": "12.331",
+    "verified": "12.331"
+  },
+  "url": "https://github.com/Deatrathias/pf2e-saves-helper",
+  "readme": "https://github.com/Deatrathias/pf2e-saves-helper/blob/main/README.md",
+  "relationships": {
+    "systems": [
+      {
+        "id": "pf2e",
+        "type": "system",
+        "compatibility": {}
+      }
+    ]
+  },
+  "authors": [
+    {
+      "name": "Deatrathias",
+      "discord": "deatrathias",
+      "flags": {}
+    }
+  ],
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "styles": [
+    "styles/style.css"
+  ],
+  "languages": [
+    {
+      "lang": "en",
+      "path": "lang/en.json",
+      "name": "en",
+      "flags": {}
+    }
+  ],
+  "description": "A module for Pathfinder 2e to help with rolling saving throws for multiple tokens"
+}

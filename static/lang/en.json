@@ -1,0 +1,15 @@
+{
+    "PF2E-SAVES-HELPER": {
+        "ApplyAll": "Apply to All",
+        "ApplyNPC": "Apply to NPCs",
+        "SetTargets": "Set Targets",
+        "Settings": {
+            "ApplyHealing": "Attempt to Apply Healing When Applying All",
+            "ApplyHealingHint": "When using Apply damage to all, attempt to determine if a target should be healed instead of taking damage.",
+            "HideSavingThrows": "Hide Saving Throw Messages",
+            "HideSavingThrowsHint": "Do not display the message in chat for saving throws rolled from the saves message.",
+            "IgnoreHealingSaves": "Ignore Save Targets For Healing",
+            "IgnoreHealingSavesHint": "Hide targets's save button for targets that would be healed if the spell has the healing trait."
+        }
+    }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "pf2e-saves-helper",
+  "version": "0.0.1",
+  "description": "",
+  "scripts": {
+    "build": "esbuild src/scripts/main.ts --bundle --keep-names --minify --sourcemap --outdir=dist/scripts"
+  },
+  "keywords": [],
+  "author": "Deatrathias",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "esbuild": "0.24.0",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "foundry-pf2e": "github:reonZ/foundry-pf2e"
+  }
+}

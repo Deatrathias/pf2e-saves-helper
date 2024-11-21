@@ -1,0 +1,8 @@
+/node_modules
+/obj
+/.vs
+/.vscode
+/dist
+*.esproj
+*.sln
+/nuget.config

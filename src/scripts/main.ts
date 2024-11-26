@@ -1,4 +1,13 @@
-import { createHTMLElement, DEGREE_OF_SUCCESS, DEGREE_OF_SUCCESS_STRINGS, getTemplateTokens, htmlQuery, MODULE, R } from "foundry-pf2e";
+import {
+    createHTMLElement,
+    DEGREE_OF_SUCCESS,
+    DEGREE_OF_SUCCESS_STRINGS,
+    getTemplateTokens,
+    htmlQuery, htmlQueryAll,
+    MODULE,
+    R,
+    render
+} from "foundry-pf2e";
 
 const MODULE_NAME: string = "pf2e-saves-helper";
 const SOCKET_NAME: string = `module.${MODULE_NAME}`;
@@ -90,11 +99,21 @@ function handleSocketMessage(message: SavesHelperSocketMessage) {
     }
 }
 
-function handleSaveRolled(message: SaveRolledMessage) {
+async function handleSaveRolled(message: SaveRolledMessage) {
     if (!game.user.isGM)
         return;
 
-    ChatMessage.updateDocuments([{ _id: message.message, [`flags.${MODULE_NAME}.results.${uuidConvert(message.token)}`]: { degreeOfSuccess: message.degreeOfSuccess, rollValue: message.rollValue } }]);
+    const chatMessage = game.messages.get(message.message);
+    if (!chatMessage)
+        return;
+    const savesFlag = chatMessage.flags[MODULE_NAME] as SavesFlag;
+    const resultEntry = { degreeOfSuccess: message.degreeOfSuccess, rollValue: message.rollValue };
+    savesFlag.results[uuidConvert(message.token)] = resultEntry;
+
+    chatMessage.update({
+        [`flags.${MODULE_NAME}.results.${uuidConvert(message.token)}`]: resultEntry,
+        content: await getSavesMessageContent(savesFlag)
+    });
 }
 
 function handleUpdateApplied(message: UpdateAppliedMessage) {
@@ -116,9 +135,9 @@ async function createSavesMessage(message: ChatMessagePF2e, messageFlags: ChatMe
     if (!messageFlags || !messageFlags["pf2e"])
         return;
 
-    const savesFlag = getSavesFlag(message, messageFlags, spell);
+    const savesFlag = createSavesFlag(message, messageFlags, spell);
     const savesMessage = await ChatMessage.create({
-        content: getSavesMessageContent(savesFlag),
+        content: await getSavesMessageContent(savesFlag),
         speaker: message.speaker,
         flags: {
             [MODULE_NAME]: savesFlag
@@ -135,7 +154,7 @@ async function updateSavesMessage(messageId: string, sourceMessage: ChatMessageP
     if (!messageFlags || !messageFlags["pf2e"])
         return;
 
-    const savesFlag = getSavesFlag(sourceMessage, messageFlags, spell);
+    const savesFlag = createSavesFlag(sourceMessage, messageFlags, spell);
     await ChatMessage.updateDocuments([{ _id: messageId, content: getSavesMessageContent(savesFlag), [`flags.${MODULE_NAME}`]: savesFlag }]);
 }
 
@@ -159,7 +178,7 @@ function onSpellMessageCreated(message: ChatMessagePF2e) {
     createSavesMessage(message, message.flags, spell);
 }
 
-function getSavesFlag(message: ChatMessagePF2e, messageFlags: ChatMessageFlagsPF2e, spell: SpellPF2e): SavesFlag {
+function createSavesFlag(message: ChatMessagePF2e, messageFlags: ChatMessageFlagsPF2e, spell: SpellPF2e): SavesFlag {
     const save = spell.system.defense?.save;
     if (!save)
         return { targets: [], results: {} } satisfies SavesFlag;
@@ -222,7 +241,9 @@ Hooks.on("preUpdateChatMessage", (message: ChatMessagePF2e, changed: Record<stri
 });
 
 Hooks.on("updateChatMessage", async (message: ChatMessagePF2e, changed: Record<string, ChatMessageFlagsPF2e>) => {
-    if (message.flags[MODULE_NAME]?.damageMessage) {
+    if (message.flags[MODULE_NAME]?.sourceMessage) {
+        refreshAndScroll(message);
+    }else if (message.flags[MODULE_NAME]?.damageMessage) {
         const damageMessage = game.messages.get(message.flags[MODULE_NAME].damageMessage as string);
         if (damageMessage) {
             await ui.chat.updateMessage(damageMessage);
@@ -235,28 +256,97 @@ Hooks.on("updateChatMessage", async (message: ChatMessagePF2e, changed: Record<s
     }
 });
 
-function getSavesMessageContent(savesFlag: SavesFlag): string {
-    const mainDiv = createHTMLElement("div", { classes: ["pf2e", "chat-card"] });
+async function refreshAndScroll(message: ChatMessagePF2e) {
+    await ui.chat.updateMessage(message);
+    if (game.messages.contents[game.messages.contents.length - 1] == message)
+        ui.chat.scrollBottom({ waitImages: true });
+}
 
-    // Title
-    if (savesFlag.dc && savesFlag.saveType) {
+async function getSavesMessageContent(savesFlag: SavesFlag): Promise<string> {
+    let tokenDocList = savesFlag.targets?.map(t => fromUuidSync(t) as TokenDocumentPF2e).filter(t => t);
+
+    const savesLabel = ((): string | null => {
+        if (!savesFlag.dc || !savesFlag.saveType)
+            return null;
         const saveKey = savesFlag.basic ? "PF2E.SaveDCLabelBasic" : "PF2E.SaveDCLabel";
         const localized = game.i18n.format(saveKey, {
             dc: savesFlag.dc,
             type: game.i18n.localize(CONFIG.PF2E.saves[savesFlag.saveType])
         });
-        const insideTitle = createHTMLElement("h4");
-        insideTitle.append(createHTMLElement("strong", { innerHTML: localized }));
-        game.pf2e.TextEditor.convertXMLNode(insideTitle, "dc", { visibility: game.pf2e.settings.metagame.dcs ? "all" : "owner", whose: null });
-        mainDiv.append(createHTMLElement("header", { classes: ["card-header", "flexrow"], innerHTML: insideTitle.outerHTML }));
+        const tempElement = createHTMLElement("div", { innerHTML: localized });
+        game.pf2e.TextEditor.convertXMLNode(tempElement, "dc", { visibility: game.pf2e.settings.metagame.dcs ? "all" : "owner", whose: null });
+        return tempElement.innerHTML;
+    })();
+
+    let tokenList: Record<string, any>[] = [];
+
+    for (let tokenDoc of tokenDocList) {
+        const hidden = tokenDoc.hidden ? "gm" : "all";
+
+        const name = tokenDoc.name;
+
+        const tokenUuid = tokenDoc.uuid;
+        const playerOwned = tokenDoc.hasPlayerOwner ? "pc" : "npc";
+
+        // Token Image
+        const [imageUrl, scale] = (() => {
+            const tokenImage = tokenDoc.texture.src;
+            const hasTokenImage = tokenImage && ImageHelper.hasImageExtension(tokenImage);
+            if (!hasTokenImage)
+                return [tokenDoc.actor?.img, 1];
+
+            // Calculate the correction factor for dynamic tokens.
+            // Prototype tokens do not have access to subjectScaleAdjustment so we recompute using default values
+            const defaultRingThickness = 0.1269848;
+            const defaultSubjectThickness = 0.6666666;
+            const scaleCorrection = tokenDoc.ring.enabled ? 1 / (defaultRingThickness + defaultSubjectThickness) : 1;
+            return [tokenImage, Math.max(1, tokenDoc.texture.scaleX) * scaleCorrection];
+        })();
+
+        const image = document.createElement("img");
+        image.alt = tokenDoc.name;
+        image.src = imageUrl as string;
+        image.style.transform = `scale(${scale})`;
+
+        // If image scale is above 1.2, we might need to add a radial fade to not block out the name
+        if (scale > 1.2) {
+            const ringPercent = 100 - Math.floor(((scale - 0.7) / scale) * 100);
+            const limitPercent = 100 - Math.floor(((scale - 1.15) / scale) * 100);
+            image.style.maskImage = `radial-gradient(circle at center, black ${ringPercent}%, rgba(0, 0, 0, 0.2) ${limitPercent}%)`;
+        }
+
+        const healingTraits = game.settings.get(MODULE_NAME, SETTINGS.IGNORE_HEALING_SAVES) && savesFlag.origin?.rollOptions?.some(t => t === "healing") ? getHealingTraitsFromOptions(savesFlag.origin?.rollOptions) : null;
+
+        // Saves results
+        const convertedUuid = uuidConvert(tokenDoc.uuid);
+        const healed = healingTraits && canApplyHealing(tokenDoc.actor, healingTraits);
+        const hasResult = savesFlag.results[convertedUuid];
+
+        const result = hasResult ? savesFlag.results[convertedUuid] : null;
+        const degreeOfSuccess = result ? [DEGREE_OF_SUCCESS_STRINGS[result.degreeOfSuccess]] : "failure";
+        const rollValue = result ? result.rollValue.toFixed() : 0;
+        const degreeOfSuccessLabel = "PF2E.Check.Result.Degree.Check." + degreeOfSuccess;
+
+        tokenList.push({
+            name,
+            hidden,
+            tokenUuid,
+            image: image.outerHTML,
+            hasResult,
+            healed,
+            degreeOfSuccess,
+            rollValue,
+            degreeOfSuccessLabel,
+            playerOwned
+        });
     }
 
-    return mainDiv.innerHTML;
+    return render("saves-message", { savesLabel: savesLabel, tokenList: tokenList });
 }
 
 Hooks.on("renderChatMessage", async (message: ChatMessagePF2e, html: JQuery) => {
     if (message.flags[MODULE_NAME]?.sourceMessage)
-        onRenderSavesMessage(message, html);
+        addSavesMessageListeners(message, html[0]);
     else if (message.flags["pf2e"]?.context?.type === "damage-roll" && message.flags[MODULE_NAME])
         onRenderDamageMessage(message, html);
 });
@@ -283,90 +373,25 @@ Hooks.on("createMeasuredTemplate", async (measuredTemplate: MeasuredTemplateDocu
     addTargets(savesMessage, saveType);
 });
 
-function onRenderSavesMessage(message: ChatMessagePF2e, html: JQuery) {
-    const mainDiv = html.find(".message-content");
-    if (!mainDiv)
-        return;
-
+function addSavesMessageListeners(message: ChatMessagePF2e, html: HTMLElement) {
     const savesFlag = message.flags[MODULE_NAME] as SavesFlag;
+    const tokenDocList = savesFlag.targets?.map(t => fromUuidSync(t) as TokenDocumentPF2e).filter(t => t);
+    let button = htmlQuery(html, "[data-action='set-targets']");
+    button?.addEventListener("click", (event) => addTargets(message, savesFlag.saveType ?? ""));
 
-    let tokenDocList = savesFlag.targets?.map(t => fromUuidSync(t) as TokenDocumentPF2e).filter(t => t);
+    const incompleteRollTokenList: TokenDocumentPF2e[] = [];
+    const incompleteRollNPCList: TokenDocumentPF2e[] = [];
+    const tokenRows = htmlQueryAll(html, "[data-token]");
 
-    if (game.settings.get(MODULE_NAME, SETTINGS.IGNORE_HEALING_SAVES) && savesFlag.origin?.rollOptions?.some(t => t === "healing")) {
-        const healingTraits = getHealingTraitsFromOptions(savesFlag.origin?.rollOptions);
-        if (healingTraits) {
-            tokenDocList = tokenDocList.filter(t => !canApplyHealing(t.actor, healingTraits));
-        }
-    }
+    for (let tokenRow of tokenRows) {
+        if (tokenRow && tokenRow.dataset?.token) {
+            const targetToken = fromUuidSync(tokenRow.dataset?.token) as TokenDocumentPF2e | null;
+            const tokenName = htmlQuery(tokenRow, "[data-action='select-token']");
 
-    // Buttons
-    let buttonContainer = createHTMLElement("div", { classes: ["saves-buttons"] });
-
-    if (game.user.isGM || message.isAuthor) {
-        let targetButton = createHTMLElement("a", { innerHTML: '<i class="fa-solid fa-bullseye"></i>', dataset: { tooltip: game.i18n.localize("PF2E-SAVES-HELPER.SetTargets") } });
-        targetButton.addEventListener("click", (event) => addTargets(message, savesFlag.saveType ?? ""));
-        buttonContainer.append(targetButton);
-
-        if (game.user.isGM && tokenDocList.length > 0) {
-            const incompleteRollTokenList = tokenDocList.filter(t => !savesFlag.results[uuidConvert(t.uuid)]);
-            let rollAll = createHTMLElement("a", { innerHTML: '<i class="fa-solid fa-users"></i>', dataset: { tooltip: game.i18n.localize("COMBAT.RollAll") } });
-            rollAll.addEventListener("click", async (event) => Promise.all(incompleteRollTokenList.map(t => rollSave(event, message.id, savesFlag, t))));
-            buttonContainer.append(rollAll);
-            let rollNPCs = createHTMLElement("a", { innerHTML: '<i class="fa-solid fa-users-cog"></i>', dataset: { tooltip: game.i18n.localize("COMBAT.RollNPC") } });
-            rollNPCs.addEventListener("click", async (event) => Promise.all(incompleteRollTokenList.filter(t => !t.hasPlayerOwner).map(t => rollSave(event, message.id, savesFlag, t))));
-            buttonContainer.append(rollNPCs);
-        }
-    }
-
-    mainDiv.append(buttonContainer);
-
-    // Targets
-    if (tokenDocList.length > 0) {
-        let list = createHTMLElement("ol", { classes: ["pf2e-saves-helper", "saves-list"] });
-        for (let targetToken of tokenDocList) {
-            if (targetToken && (game.user.isGM || !targetToken.hidden)) {
-                let listElement = createHTMLElement("li", { classes: ["saves-list-item"] });
-                let nameRow = createHTMLElement("div", { classes: ["name-row", "flexrow"] });
-                
-                const [imageUrl, scale] = (() => {
-                    const tokenImage = targetToken.texture.src;
-                    const hasTokenImage = tokenImage && ImageHelper.hasImageExtension(tokenImage);
-                    if (!hasTokenImage) 
-                        return [targetToken.actor?.img, 1];
-
-                    // Calculate the correction factor for dynamic tokens.
-                    // Prototype tokens do not have access to subjectScaleAdjustment so we recompute using default values
-                    const defaultRingThickness = 0.1269848;
-                    const defaultSubjectThickness = 0.6666666;
-                    const scaleCorrection = targetToken.ring.enabled ? 1 / (defaultRingThickness + defaultSubjectThickness) : 1;
-                    return [tokenImage, Math.max(1, targetToken.texture.scaleX) * scaleCorrection];
-                })();
-
-                const image = document.createElement("img");
-                image.alt = targetToken.name;
-                image.src = imageUrl as string;
-                image.style.transform = `scale(${scale})`;
-
-                // If image scale is above 1.2, we might need to add a radial fade to not block out the name
-                if (scale > 1.2) {
-                    const ringPercent = 100 - Math.floor(((scale - 0.7) / scale) * 100);
-                    const limitPercent = 100 - Math.floor(((scale - 1.15) / scale) * 100);
-                    image.style.maskImage = `radial-gradient(circle at center, black ${ringPercent}%, rgba(0, 0, 0, 0.2) ${limitPercent}%)`;
-                }
-
-                const usedToken = imageUrl === targetToken.texture.src;
-                const portrait = createHTMLElement("div", {
-                    children: [image],
-                    classes: ["portrait", usedToken ? "token" : "actor-image"],
-                });
-
-                nameRow.append(portrait);
-                    
-                nameRow.append(createHTMLElement("span", { classes: ["name"], innerHTML: targetToken.name }));
-
-                nameRow.addEventListener("mouseenter", (event) => targetToken.object?.emitHoverIn(event));
-                nameRow.addEventListener("mouseleave", (event) => targetToken.object?.emitHoverOut(event));
-                nameRow.addEventListener("click", (event) => {
+            if (tokenName && targetToken) {
+                tokenName.addEventListener("mouseenter", (event) => targetToken.object?.emitHoverIn(event));
+                tokenName.addEventListener("mouseleave", (event) => targetToken.object?.emitHoverOut(event));
+                tokenName.addEventListener("click", (event) => {
                     if (targetToken.isOwner && targetToken.object) {
                         if (!targetToken.object.controlled || !event.shiftKey)
                             targetToken.object.control({ releaseOthers: !event.shiftKey });
@@ -375,44 +400,22 @@ function onRenderSavesMessage(message: ChatMessagePF2e, html: JQuery) {
                     }
                 });
 
-                let container = createHTMLElement("div", { classes: ["flexrow"] });
-                container.append(nameRow);
-
-                const convertedUuid = uuidConvert(targetToken.uuid);
-                if (savesFlag.results[convertedUuid]) {
-                    const result = savesFlag.results[convertedUuid];
-                    let wrapDiv = createHTMLElement("div", { classes: ["saves-roll", "saves-result", "flexrow"] });
-                    let resultText = createHTMLElement("span", { classes: [DEGREE_OF_SUCCESS_STRINGS[result.degreeOfSuccess]], innerHTML: result.rollValue.toFixed() });
-                    resultText.dataset.tooltip = game.i18n.localize("PF2E.Check.Result.Degree.Check." + DEGREE_OF_SUCCESS_STRINGS[result.degreeOfSuccess]);
-                    wrapDiv.append(resultText);
-                    container.append(wrapDiv);
+                let button = htmlQuery(tokenRow, "[data-action='roll-save-token']");
+                if (button && targetToken.isOwner) {
+                    incompleteRollTokenList.push(targetToken);
+                    if (button.dataset.playerOwned === "npc")
+                        incompleteRollNPCList.push(targetToken);
+                    button.classList.remove("no-display");
+                    button.addEventListener("click", (event) => rollSave(event, message.id, savesFlag, targetToken));
                 }
-                else {
-                    const saveButton = createSaveButton(message.id, savesFlag, targetToken);
-                    if (saveButton)
-                        container.append(saveButton);
-                }
-
-                listElement.append(container);
-                list.append(listElement);
             }
         }
-        if (list.childElementCount > 0)
-            mainDiv.append(list);
     }
-}
 
-function createSaveButton(messageId: string, savesFlag: SavesFlag, tokenDoc: TokenDocumentPF2e): Maybe<HTMLElement> {
-    if (!tokenDoc.isOwner) {
-        return createHTMLElement("div", { classes: ["saves-roll", "saves-roll-button", "flexrow"] });
-    }
-    else {
-        let saveButton = createHTMLElement("a", { classes: ["saves-roll", "saves-roll-button", "flexrow"], dataset: { action: "save-roll" }, innerHTML: "<i class='fas fa-dice-d20'> </i>" });
-        saveButton.dataset.tooltip = game.i18n.localize("PF2E.Roll.Roll");
-        saveButton.addEventListener("click", (event) => rollSave(event, messageId, savesFlag, tokenDoc));
-
-        return saveButton;
-    }
+    button = htmlQuery(html, "[data-action='roll-saves-all']");
+    button?.addEventListener("click", async (event) => Promise.all(incompleteRollTokenList.map(t => rollSave(event, message.id, savesFlag, t))));
+    button = htmlQuery(html, "[data-action='roll-saves-npc']");
+    button?.addEventListener("click", async (event) => Promise.all(incompleteRollNPCList.map(t => rollSave(event, message.id, savesFlag, t))));
 }
 
 async function rollSave(event: MouseEvent, messageId: string, savesFlag: SavesFlag, tokenDoc: TokenDocumentPF2e) {
@@ -450,8 +453,15 @@ async function rollSave(event: MouseEvent, messageId: string, savesFlag: SavesFl
             const message = game.messages.get(messageId);
             if (!message)
                 return;
+
             if (message.isAuthor || game.user.isGM) {
-                ChatMessage.updateDocuments([{ _id: message.id, [`flags.${MODULE_NAME}.results.${uuidConvert(tokenDoc.uuid)}`]: { degreeOfSuccess: roll.degreeOfSuccess, rollValue: roll.total } satisfies SaveResult }]);
+                const resultEntry = { degreeOfSuccess: roll.degreeOfSuccess, rollValue: roll.total };
+                savesFlag.results[uuidConvert(tokenDoc.uuid)] = resultEntry;
+                ChatMessage.updateDocuments([{
+                    _id: message.id,
+                    [`flags.${MODULE_NAME}.results.${uuidConvert(tokenDoc.uuid)}`]: { degreeOfSuccess: roll.degreeOfSuccess, rollValue: roll.total } satisfies SaveResult,
+                    content: await getSavesMessageContent(savesFlag)
+                }]);
             }
             else {
                 game.socket.emit(SOCKET_NAME, {
@@ -481,27 +491,11 @@ function filterTarget(target: TokenPF2e, ignoreDead: boolean, saveStatistic: str
     return true;
 }
 
-function addTargets(message: ChatMessagePF2e, saveStatistic: string) {
+async function addTargets(message: ChatMessagePF2e, saveStatistic: string) {
     const targets = game.user.targets.filter(t => filterTarget(t, false, saveStatistic)).map(t => t.document.uuid);
-    message.update({ [`flags.${MODULE_NAME}.targets`]: [...targets] });
-}
-
-function onSaveMessageCreated(message: ChatMessagePF2e, context: CheckContextChatFlag, savesMessageId: string) {
-    const savesMessage = game.messages.get(savesMessageId);
-    if (!savesMessage || !savesMessage.isAuthor)
-        return;
-
-    if (message.rolls.length == 0)
-        return;
-
-    if (!context.target || !context.target.token)
-        return;
-
-    const tokenUuid = uuidConvert(context.target.token);
-    const saveRoll = message.rolls[0] as CheckRoll;
-    const saveResult = { degreeOfSuccess: saveRoll.degreeOfSuccess, rollValue: saveRoll.total } as SaveResult;
-
-    ChatMessage.updateDocuments([{ _id: savesMessageId, [`flags.${MODULE_NAME}.results.${tokenUuid}`]: saveResult }]);
+    const savesFlag = message.flags[MODULE_NAME] as SavesFlag;
+    savesFlag.targets = [...targets];
+    await message.update({ [`flags.${MODULE_NAME}.targets`]: savesFlag.targets, content: await getSavesMessageContent(savesFlag) });
 }
 
 async function findSavesMessageFromDamageRoll(message: ChatMessagePF2e): Promise<ChatMessagePF2e | null> {

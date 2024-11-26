@@ -1,0 +1,38 @@
+<div class="pf2e chat-card pf2e-saves-helper">
+	<header class="card-header flexrow">
+		<h4><strong>{{{savesLabel}}}</strong></h4>
+	</header>
+	
+	<section class="saves-buttons">
+		<a data-visibility="owner" data-tooltip="{{localize "PF2E-SAVES-HELPER.SetTargets"}}" data-action="set-targets"><i class="fa-solid fa-bullseye"></i></a>
+		<a data-visibility="gm" data-tooltip="{{localize "COMBAT.RollAll"}}" data-action="roll-saves-all"><i class="fa-solid fa-users"></i></a>
+		<a data-visibility="gm" data-tooltip="{{localize "COMBAT.RollNPC"}}" data-action="roll-saves-npc"><i class="fa-solid fa-users-cog"></i></a>
+	</section>
+	
+	<section class="saves-section">
+		<ol class="saves-list">
+			{{#each tokenList}}
+			<li class="saves-list-item" data-visibility="{{hidden}}" data-token="{{tokenUuid}}">
+				<div class="flexrow">
+					<div class="name-row flexrow" data-action="select-token">
+						<div class="portrait token">
+							{{{image}}}
+						</div>
+						<span class="name">{{name}}</span>
+					</div>
+					{{#if hasResult}}
+					<div class="saves-roll saves-result flexrow">
+						<span class="{{degreeOfSuccess}}" data-tooltip="{{localize degreeOfSuccessLabel}}">{{rollValue}}</span>
+					</div>
+					{{else}}
+					{{#unless healed}}
+					<a class="saves-roll saves-roll-button flexrow no-display" data-action="roll-save-token" data-player-owned='{{playerOwned}}'
+						data-tooltip="{{localize "PF2E.Roll.Roll"}}"><i class='fas fa-dice-d20'></i></a>
+					{{/unless}}
+					{{/if}}
+				</div>
+			</li>
+			{{/each}}
+		</ol>
+	</section>
+</div>

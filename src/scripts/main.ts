@@ -243,14 +243,16 @@ Hooks.on("preUpdateChatMessage", (message: ChatMessagePF2e, changed: Record<stri
 Hooks.on("updateChatMessage", async (message: ChatMessagePF2e, changed: Record<string, ChatMessageFlagsPF2e>) => {
     if (message.flags[MODULE_NAME]?.sourceMessage) {
         refreshAndScroll(message);
-    }else if (message.flags[MODULE_NAME]?.damageMessage) {
-        const damageMessage = game.messages.get(message.flags[MODULE_NAME].damageMessage as string);
-        if (damageMessage) {
-            await ui.chat.updateMessage(damageMessage);
-            // Update popout chat windows
-            for (let appId in ui.windows) {
-                if (ui.windows[appId] instanceof ChatPopout && ui.windows[appId].message.id === damageMessage.id)
-                    ui.windows[appId].render(true);
+
+        if (message.flags[MODULE_NAME]?.damageMessage) {
+            const damageMessage = game.messages.get(message.flags[MODULE_NAME].damageMessage as string);
+            if (damageMessage) {
+                await ui.chat.updateMessage(damageMessage);
+                // Update popout chat windows
+                for (let appId in ui.windows) {
+                    if (ui.windows[appId] instanceof ChatPopout && ui.windows[appId].message.id === damageMessage.id)
+                        ui.windows[appId].render(true);
+                }
             }
         }
     }

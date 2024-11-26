@@ -128,7 +128,7 @@ jobs:
         run: |
           cp -a ./static/. ./
           cp -a ./dist/. ./
-          zip -r9 ./module.zip module.json lang/ scripts/ styles/ README.md LICENSE
+          zip -r9 ./module.zip module.json lang/ scripts/ styles/ templates/ README.md LICENSE
 
       # Update the GitHub release with the manifest and module archive files.
       - name: Update Release With Files

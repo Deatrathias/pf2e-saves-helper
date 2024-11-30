@@ -443,41 +443,65 @@ async function rollSave(event: MouseEvent, messageId: string, savesFlag: SavesFl
         identifier: messageId,
         rollMode: tokenDoc.hidden ? "gmroll" : "roll",
         createMessage: !game.settings.get(MODULE_NAME, SETTINGS.HIDE_SAVING_THROWS),
-        callback: async (roll, outcome, rollMessage, event) => {
-            if (!roll || roll.degreeOfSuccess == null)
-                return;
-
-            if (game.modules.get("dice-so-nice")?.active) {
-                if (rollMessage)
-                    await game.dice3d?.waitFor3DAnimationByMessageID(rollMessage.id);
-            }
-
-            const message = game.messages.get(messageId);
-            if (!message)
-                return;
-
-            if (message.isAuthor || game.user.isGM) {
-                const resultEntry = { degreeOfSuccess: roll.degreeOfSuccess, rollValue: roll.total };
-                savesFlag.results[uuidConvert(tokenDoc.uuid)] = resultEntry;
-                ChatMessage.updateDocuments([{
-                    _id: message.id,
-                    [`flags.${MODULE_NAME}.results.${uuidConvert(tokenDoc.uuid)}`]: { degreeOfSuccess: roll.degreeOfSuccess, rollValue: roll.total } satisfies SaveResult,
-                    content: await getSavesMessageContent(savesFlag)
-                }]);
-            }
-            else {
-                game.socket.emit(SOCKET_NAME, {
-                    type: "save-rolled",
-                    message: messageId,
-                    token: tokenDoc.uuid,
-                    degreeOfSuccess: roll.degreeOfSuccess,
-                    rollValue: roll.total
-                } satisfies SaveRolledMessage);
-            }
-        }
+        callback: async (roll, outcome, rollMessage, event) => onRollCallback(messageId, roll, rollMessage)
     });
+}
 
-    
+Hooks.on("pf2e.reroll", (originalRoll: CheckRoll, reroll: CheckRoll, heroPoint: boolean, keep: string) => {
+    if (reroll.options.type === "saving-throw" && reroll.options.identifier) {
+        const savesMesage = game.messages.get(reroll.options.identifier);
+        if (!savesMesage || !savesMesage.flags[MODULE_NAME]?.sourceMessage)
+            return;
+            
+        Hooks.once("createChatMessage", (message: ChatMessagePF2e) => {
+            if (message.rolls?.length <= 0)
+                return;
+
+            onRollCallback(savesMesage.id, reroll, message);
+        });
+    }
+});
+
+async function onRollCallback(savesMessageId: string, roll: CheckRoll, rollMessage: ChatMessagePF2e) {
+    {
+        if (!roll || roll.degreeOfSuccess == null || !roll.total)
+            return;
+
+        if (game.modules.get("dice-so-nice")?.active) {
+            if (rollMessage)
+                await game.dice3d?.waitFor3DAnimationByMessageID(rollMessage.id);
+        }
+        const context = rollMessage.flags.pf2e?.context as CheckContextChatFlag | undefined;
+        const tokenUuid = context?.target?.token;
+
+        if (!tokenUuid)
+            return;
+
+        const message = game.messages.get(savesMessageId);
+        if (!message || !message.flags[MODULE_NAME])
+            return;
+
+        let savesFlag = message.flags[MODULE_NAME] as SavesFlag;
+
+        if (message.isAuthor || game.user.isGM) {
+            const resultEntry = { degreeOfSuccess: roll.degreeOfSuccess, rollValue: roll.total };
+            savesFlag.results[uuidConvert(tokenUuid)] = resultEntry;
+            ChatMessage.updateDocuments([{
+                _id: message.id,
+                [`flags.${MODULE_NAME}.results.${uuidConvert(tokenUuid)}`]: { degreeOfSuccess: roll.degreeOfSuccess, rollValue: roll.total } satisfies SaveResult,
+                content: await getSavesMessageContent(savesFlag)
+            }]);
+        }
+        else {
+            game.socket.emit(SOCKET_NAME, {
+                type: "save-rolled",
+                message: savesMessageId,
+                token: tokenUuid,
+                degreeOfSuccess: roll.degreeOfSuccess,
+                rollValue: roll.total
+            } satisfies SaveRolledMessage);
+        }
+    }
 }
 
 function filterTarget(target: TokenPF2e, ignoreDead: boolean, saveStatistic: string | undefined = undefined): boolean {

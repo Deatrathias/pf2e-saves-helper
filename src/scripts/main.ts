@@ -250,7 +250,7 @@ Hooks.on("updateChatMessage", async (message: ChatMessagePF2e, changed: Record<s
                 await ui.chat.updateMessage(damageMessage);
                 // Update popout chat windows
                 for (let appId in ui.windows) {
-                    if (ui.windows[appId] instanceof ChatPopout && ui.windows[appId].message.id === damageMessage.id)
+                    if (ui.windows[appId] instanceof foundry.applications.sidebar.apps.ChatPopout && ui.windows[appId].message.id === damageMessage.id)
                         ui.windows[appId].render(true);
                 }
             }
@@ -346,9 +346,9 @@ async function getSavesMessageContent(savesFlag: SavesFlag): Promise<string> {
     return render("saves-message", { savesLabel: savesLabel, tokenList: tokenList });
 }
 
-Hooks.on("renderChatMessage", async (message: ChatMessagePF2e, html: JQuery) => {
+Hooks.on("renderChatMessageHTML", async (message: ChatMessagePF2e, html: HTMLElement) => {
     if (message.flags[MODULE_NAME]?.sourceMessage)
-        addSavesMessageListeners(message, html[0]);
+        addSavesMessageListeners(message, html);
     else if (message.flags["pf2e"]?.context?.type === "damage-roll" && message.flags[MODULE_NAME])
         onRenderDamageMessage(message, html);
 });
@@ -370,8 +370,7 @@ Hooks.on("createMeasuredTemplate", async (measuredTemplate: MeasuredTemplateDocu
     await new Promise<void>(resolve => Hooks.once("refreshMeasuredTemplate", () => { resolve(); }));
 
     const tokenList = getTemplateTokens(measuredTemplate).filter(t => filterTarget(t, true, saveType)).map(t => t.id);
-    game.user.updateTokenTargets(tokenList);
-    game.user.broadcastActivity({ targets: tokenList });
+    canvas.tokens.setTargets(tokenList);
     addTargets(savesMessage, saveType);
 });
 
@@ -674,7 +673,7 @@ function renderDamageAllButtons(message: ChatMessagePF2e, tokenDocList: TokenDoc
     return buttonContainer;
 }
 
-function onRenderDamageMessage(message: ChatMessagePF2e, html: JQuery) {
+function onRenderDamageMessage(message: ChatMessagePF2e, html: HTMLElement) {
     if (!message.flags[MODULE_NAME])
         return;
 
@@ -689,9 +688,9 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: JQuery) {
 
     const tokenDocList = targets.map(t => fromUuidSync(t) as TokenDocumentPF2e).filter(t => t && t.isOwner);
 
-    const damageApplicationList = html.find("section.damage-application");
+    const damageApplicationList = htmlQueryAll(html, "section.damage-application");
 
-    damageApplicationList.each((index, damageApplication) => {
+    damageApplicationList.forEach((damageApplication, index) => {
         let damageTokenContainer = createHTMLElement("section", { classes: ["pf2e-saves-helper", "damage-token"] });
         const isHealingRoll = (message.rolls[index] as Rolled<DamageRoll>).kinds.has("healing");
 
@@ -723,8 +722,8 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: JQuery) {
             damageTokenContainer.append(tokenHeader);
 
             let shieldBlockButton: HTMLButtonElement | undefined = undefined;
-            if (htmlQuery(damageApplication, "button[data-action='shield-block']")) {
-                shieldBlockButton = createHTMLElement("button", { dataset: { action: "shield-block" }, classes: ["dice-total-shield-btn", "tooltipstered"], innerHTML: `<span class="label">${game.i18n.localize("PF2E.DamageButton.ShieldBlockShort")}</<span>` });
+            if (htmlQuery(damageApplication, "button[data-action='shieldBlock']")) {
+                shieldBlockButton = createHTMLElement("button", { dataset: { action: "shieldBlock" }, classes: ["dice-total-shield-btn", "tooltipstered"], innerHTML: `<span class="label">${game.i18n.localize("PF2E.DamageButton.ShieldBlockShort")}</<span>` });
                 if (shieldBlockButton) {
                     shieldBlockButton.type = "button";
                     shieldBlockButton.addEventListener("click", (event) => {
@@ -740,7 +739,7 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: JQuery) {
 
             let hasDamageButton = false;
 
-            if (htmlQuery(damageApplication, "button[data-action='apply-damage']")) {
+            if (htmlQuery(damageApplication, "button[data-multiplier='1']")) {
                 hasDamageButton = true;
 
                 let splash = message.rolls[index]?.options.splashOnly as boolean | undefined ?? false;
@@ -753,7 +752,7 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: JQuery) {
                 tokenSection.append(damageButton);
             }
 
-            if (htmlQuery(damageApplication, "button[data-action='half-damage']")) {
+            if (htmlQuery(damageApplication, "button[data-multiplier='0.5']")) {
                 let halfButton = createHTMLElement("button", { classes: ["half-damage"], innerHTML: `<span class="label">${game.i18n.localize("PF2E.DamageButton.HalfShort")}</<span>` });
                 halfButton.type = "button";
                 if (!highlightHeal && savesFlag && savesFlag.basic && degreeOfSuccess == DEGREE_OF_SUCCESS.SUCCESS)
@@ -762,7 +761,7 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: JQuery) {
                 tokenSection.append(halfButton);
             }
 
-            if (htmlQuery(damageApplication, "button[data-action='double-damage']")) {
+            if (htmlQuery(damageApplication, "button[data-multiplier='2']")) {
                 let doubleButton = createHTMLElement("button", { innerHTML: `<span class="label">${game.i18n.localize("PF2E.DamageButton.DoubleShort")}</<span>` });
                 doubleButton.type = "button";
                 if (!highlightHeal && savesFlag && savesFlag.basic && degreeOfSuccess == DEGREE_OF_SUCCESS.CRITICAL_FAILURE)
@@ -771,7 +770,7 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: JQuery) {
                 tokenSection.append(doubleButton);
             }
 
-            if (htmlQuery(damageApplication, "button[data-action='triple-damage']")) {
+            if (htmlQuery(damageApplication, "button[data-multiplier='3']")) {
                 let tripleButton = createHTMLElement("button", { innerHTML: `<span class="label">${game.i18n.localize("PF2E.DamageButton.TripleShort")}</<span>` });
                 tripleButton.type = "button";
                 tripleButton.addEventListener("click", (event) => { onClickDamageButton(message, 3, index, token, shieldBlockButton, degreeOfSuccess ? DEGREE_OF_SUCCESS_STRINGS[degreeOfSuccess] : "success"); });
@@ -781,7 +780,7 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: JQuery) {
             if (shieldBlockButton)
                 tokenSection.append(shieldBlockButton);
 
-            if (htmlQuery(damageApplication, "button[data-action='apply-healing']")) {
+            if (htmlQuery(damageApplication, "button[data-multiplier='-1']")) {
                 let healingButton = createHTMLElement("button", { innerHTML: `<span class="label">${game.i18n.localize(hasDamageButton ? "PF2E.DamageButton.HealingShort" : "PF2E.Damage.Kind.Healing.Apply.Label")} </<span>` });
                 healingButton.type = "button";
                 if (highlightHeal)

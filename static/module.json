@@ -4,8 +4,8 @@
   "version": "#{VERSION}#",
   "socket": true,
   "compatibility": {
-    "minimum": "12.331",
-    "verified": "12.331"
+    "minimum": "13.342",
+    "verified": "13.342"
   },
   "url": "#{URL}#",
   "readme": "https://github.com/Deatrathias/pf2e-saves-helper/blob/main/README.md",

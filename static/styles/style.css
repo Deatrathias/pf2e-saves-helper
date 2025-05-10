@@ -99,6 +99,7 @@
 .chat-message .message-content section.pf2e-saves-helper button {
 	height: 1em;
 	flex-direction: row;
+	--button-size: 1.2em;
 }
 
 .chat-message .message-content section.pf2e-saves-helper button i {

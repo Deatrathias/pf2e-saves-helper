@@ -5,7 +5,7 @@
     "module": "NodeNext",
     "rootDir": "./src",
     "moduleResolution": "nodenext",
-    "types": ["foundry-pf2e"],
+    "types": ["foundry-pf2e", "foundry-pf2e/dice-so-nice"],
     "allowImportingTsExtensions": true,
     "allowJs": true,
     "checkJs": true,

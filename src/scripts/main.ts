@@ -21,6 +21,10 @@ const APPLICABLE_MESSAGE_TYPES = ["spell", "action", "feat"] as const;
 type ApplicableMessageType = (typeof APPLICABLE_MESSAGE_TYPES)[number];
 
 type SavesFlag = {
+    label?: {
+        value: string,
+        gmOnly: boolean
+    },
     targets: string[],
     sourceMessage?: string,
     saveInfo?: SaveInfo,
@@ -247,15 +251,22 @@ function getSaveInfoFromDataset(dataset: DOMStringMap, basic: boolean, actor?: A
         saveType: pf2Check as SaveType,
         dc: dc,
         basic: basic,
-        extraRollOptions: pf2RollOptions?.split(",").concat(pf2Traits?.split(",") ?? [])
+        extraRollOptions: [...pf2RollOptions?.split(",") ?? [], ...pf2Traits?.split(",") ?? []]
     };
 }
 
 function createSavesFlag(message: ChatMessagePF2e, messageFlags: ChatMessageFlagsPF2e, saveInfo?: SaveInfo): SavesFlag {
     if (!saveInfo)
-        return { targets: [], results: {} } satisfies SavesFlag;
+        return {
+            targets: [], results: {}
+        } satisfies SavesFlag;
     const targets = game.user.targets.filter(t => filterTarget(t, false, saveInfo.saveType)).map(t => t.document.uuid);
+    const item = fromUuidSync(messageFlags.pf2e?.origin?.uuid ?? "");
     return {
+        label: item?.name ? {
+            value: item.name,
+            gmOnly: message.whisper.length == 0 ? false : message.whisper.includes(game.users.activeGM?.id ?? "")
+        } : undefined,
         targets: [...targets],
         sourceMessage: message.id,
         saveInfo: saveInfo,
@@ -417,7 +428,7 @@ async function getSavesMessageContent(savesFlag: SavesFlag): Promise<string> {
             playerOwned
         });
     }
-    return foundry.applications.handlebars.renderTemplate(`modules/${MODULE_NAME}/templates/saves-message.hbs`, { savesLabel: savesLabel, tokenList: tokenList });
+    return foundry.applications.handlebars.renderTemplate(`modules/${MODULE_NAME}/templates/saves-message.hbs`, { label: savesFlag.label?.value, labelVisibility: savesFlag.label?.gmOnly ? "gm" : "all", savesLabel: savesLabel, tokenList: tokenList });
 }
 
 Hooks.on("renderChatMessageHTML", async (message: ChatMessagePF2e, html: HTMLElement) => {

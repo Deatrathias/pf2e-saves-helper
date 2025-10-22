@@ -1,5 +1,8 @@
 <div class="pf2e chat-card pf2e-saves-helper">
-	<header class="card-header flexrow">
+	<header class="card-header flexcolumn">
+		{{#if label}}
+		<h3 data-visibility="{{{labelVisibility}}}">{{{label}}}</h3>
+		{{/if}}
 		<h4><strong>{{{savesLabel}}}</strong></h4>
 	</header>
 	

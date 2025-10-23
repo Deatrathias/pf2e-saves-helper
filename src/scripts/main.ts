@@ -4,7 +4,7 @@ import { ChatMessageCreateOperation } from "foundry-pf2e/foundry/client/document
 import { DatabaseUpdateOperation, DatabaseCreateOperation } from "foundry-pf2e/foundry/common/abstract/_module.mjs";
 import { TokenDocumentUUID } from "foundry-pf2e/foundry/common/documents/_module.mjs";
 import { createHTMLElement, htmlQuery, htmlQueryAll } from "./imports/dom.ts";
-import { extractEphemeralEffects } from "./imports/helpers.ts";
+import { extractEphemeralEffects } from "./imports/rules/helpers.ts";
 import { DEGREE_OF_SUCCESS, DEGREE_OF_SUCCESS_STRINGS } from "./imports/degree-of-success.ts";
 import { SAVE_TYPES } from "./imports/actor/values.ts";
 
@@ -779,6 +779,7 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: HTMLElement) {
     damageApplicationList.forEach((damageApplication, index) => {
         let damageTokenContainer = createHTMLElement("section", { classes: ["pf2e-saves-helper", "damage-token"] });
         const isHealingRoll = (message.rolls[index] as Rolled<DamageRoll>).kinds.has("healing");
+        const splash = message.rolls[index]?.options.splashOnly as boolean | undefined ?? false;
 
         let gmButtons: HTMLElement | undefined = undefined;
         if (game.user.isGM && savesFlag?.saveInfo?.basic && tokenDocList.length > 0) {
@@ -798,6 +799,8 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: HTMLElement) {
             let degreeOfSuccess: ZeroToThree | undefined = undefined;
 
             let tokenHeader = createHTMLElement("header", { innerHTML: token.name });
+            tokenHeader.addEventListener("mouseenter", (event) => token.object?.emitHoverIn(event));
+            tokenHeader.addEventListener("mouseleave", (event) => token.object?.emitHoverOut(event));
             
             if (savesFlag)
                 degreeOfSuccess = savesFlag.results?.[uuidConvert(token.uuid)]?.degreeOfSuccess;
@@ -827,8 +830,6 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: HTMLElement) {
 
             if (htmlQuery(damageApplication, "button[data-multiplier='1']")) {
                 hasDamageButton = true;
-
-                let splash = message.rolls[index]?.options.splashOnly as boolean | undefined ?? false;
 
                 let damageButton = createHTMLElement("button", { innerHTML: `<span class="label">${game.i18n.localize(splash ? "PF2E.TraitSplash" : "PF2E.DamageButton.FullShort")}</<span>` });
                 damageButton.type = "button";
@@ -876,6 +877,15 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: HTMLElement) {
             }
 
             damageTokenContainer.append(tokenSection);
+
+            if (splash) {
+                let splashAroundDiv = createHTMLElement("div", { classes: ["damage-application"] });
+                let damageButton = createHTMLElement("button", { innerHTML: `<span class="label">${game.i18n.localize("PF2E-SAVES-HELPER.SplashAround")}</<span>` });
+                damageButton.type = "button";
+                damageButton.addEventListener("click", (event) => { onClickSplashAround(message, index, token) });
+                splashAroundDiv.append(damageButton);
+                damageTokenContainer.append(splashAroundDiv);
+            }
         }
         damageApplication.after(damageTokenContainer);
         if (gmButtons)
@@ -890,6 +900,39 @@ async function onClickDamageButton(message: ChatMessagePF2e, multiplier: number,
     applyDamage(message, multiplier, addend, rollIndex, token, shieldBlock, outcome);
     if (shieldBlockButton && shieldBlock)
         shieldBlockButton.classList.remove("shield-activated");
+}
+
+async function onClickSplashAround(message: ChatMessagePF2e, rollIndex: number = 0, token: TokenDocumentPF2e) {
+    const tokenObject = token.object;
+    if (!tokenObject) {
+        ui.notifications.error("Token not found in scene!");
+        return;
+    }
+    const radius = 5;
+    const radiusGrid = radius * canvas.grid.size / canvas.dimensions.distance;
+    const center = tokenObject.center;
+    const foundTokens = canvas.tokens.quadtree.getObjects(new PIXI.Rectangle(tokenObject.x - radiusGrid, tokenObject.y - radiusGrid, tokenObject.w + radiusGrid, tokenObject.h + radiusGrid));
+    for (let foundToken of foundTokens) {
+        if (foundToken.id === tokenObject.id)
+            continue;
+
+        if (tokenObject.distanceTo(foundToken) > radius)
+            continue;
+
+        const hasCollision = CONFIG.Canvas.polygonBackends.move.testCollision(
+            center,
+            foundToken.center,
+            {
+                type: "move",
+                mode: "any",
+            }
+        );
+
+        if (hasCollision)
+            continue;
+
+        applyDamage(message, 1, 0, rollIndex, foundToken.document, false, DEGREE_OF_SUCCESS_STRINGS[DEGREE_OF_SUCCESS.SUCCESS], false);
+    }
 }
 
 async function applyDamage(message: ChatMessagePF2e,

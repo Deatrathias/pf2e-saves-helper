@@ -3,6 +3,7 @@
         "ApplyAll": "Apply to All",
         "ApplyNPC": "Apply to NPCs",
         "SetTargets": "Set Targets",
+        "SplashAround": "Splash Around",
         "Settings": {
             "ApplyHealing": "Attempt to Apply Healing When Applying All",
             "ApplyHealingHint": "When using Apply damage to all, attempt to determine if a target should be healed instead of taking damage.",

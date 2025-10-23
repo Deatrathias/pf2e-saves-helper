@@ -16,8 +16,7 @@
   },
   "dependencies": {
     "foundry-pf2e": "github:7H3LaughingMan/foundry-pf2e",
-    "remeda": "^2.32.0",
-    "vite": "^7.1.10"
+    "remeda": "^2.32.0"
   },
   "repository": {
     "type": "git",

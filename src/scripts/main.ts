@@ -1,4 +1,4 @@
-import { AbilityItemPF2e, ActorPF2e, ChatMessageFlagsPF2e, ChatMessagePF2e, CheckContextChatFlag, CheckRoll, DamageRoll, DegreeOfSuccessIndex, DegreeOfSuccessString, ItemOriginFlag, ItemPF2e, MeasuredTemplateDocumentPF2e, MeasuredTemplatePF2e, SaveType, SpellPF2e, TokenDocumentPF2e, TokenPF2e, ZeroToThree } from "foundry-pf2e";
+import { AbilityItemPF2e, ActorPF2e, ChatMessageFlagsPF2e, ChatMessagePF2e, CheckContextChatFlag, CheckRoll, DamageRoll, DegreeOfSuccessIndex, DegreeOfSuccessString, ItemOriginFlag, ItemPF2e, MeasuredTemplateDocumentPF2e, MeasuredTemplatePF2e, SaveType, SpellPF2e, TokenDocumentPF2e, TokenPF2e, WeaponPF2e, ZeroToThree } from "foundry-pf2e";
 import { Rolled } from "foundry-pf2e/foundry/client/dice/roll.mjs";
 import { ChatMessageCreateOperation } from "foundry-pf2e/foundry/client/documents/chat-message.mjs";
 import { DatabaseUpdateOperation, DatabaseCreateOperation } from "foundry-pf2e/foundry/common/abstract/_module.mjs";
@@ -7,7 +7,6 @@ import { createHTMLElement, htmlQuery, htmlQueryAll } from "./imports/dom.ts";
 import { extractEphemeralEffects } from "./imports/rules/helpers.ts";
 import { DEGREE_OF_SUCCESS, DEGREE_OF_SUCCESS_STRINGS } from "./imports/degree-of-success.ts";
 import { SAVE_TYPES } from "./imports/actor/values.ts";
-import System from "foundry-pf2e/foundry/client/packages/system.mjs";
 
 
 const MODULE_NAME: string = "pf2e-saves-helper";
@@ -19,7 +18,7 @@ const SETTINGS = {
     APPLY_HEALING: "applyHealing"
 };
 
-const APPLICABLE_MESSAGE_TYPES = ["spell", "action", "feat"] as const;
+const APPLICABLE_MESSAGE_TYPES = ["spell", "action", "feat", "weapon"] as const;
 type ApplicableMessageType = (typeof APPLICABLE_MESSAGE_TYPES)[number];
 
 type SavesFlag = {
@@ -203,6 +202,23 @@ function getSaveInfoFromSpell(spell: SpellPF2e): SaveInfo | undefined {
     };
 }
 
+function onWeaponMessageCreated(message: ChatMessagePF2e) {
+    if (!message._attack)
+        return;
+
+    createSavesMessage(message, message.flags, getSaveInfoFromAttack(message._attack))
+}
+
+function getSaveInfoFromAttack(attack: any): SaveInfo | undefined {
+    if (!("statistic" in attack))
+        return undefined;
+    return {
+        saveType: "reflex",
+        basic: true,
+        dc: attack.statistic.dc.value
+    };
+}
+
 const SAVE_REGEX = /<a class="inline-check.+?data-pf2-check="(?:fortitude|reflex|will)".+?<\/a>/g;
 
 function onActionMessageCreated(message: ChatMessagePF2e) {
@@ -283,11 +299,16 @@ function createSavesFlag(message: ChatMessagePF2e, messageFlags: ChatMessageFlag
 Hooks.on("createChatMessage", (message: ChatMessagePF2e, options: ChatMessageCreateOperation, userId: string) => {
     if (userId !== game.user.id)
         return;
-    if (message.flags[SYSTEM_ID]?.context?.type === "spell-cast" && message.flags[SYSTEM_ID].origin) {
+    let flags = message.flags[SYSTEM_ID];
+    if (!flags)
+        return;
+    if (flags.context?.type === "spell-cast" && flags.origin) {
         onSpellMessageCreated(message);
-    } else if (message.flags[SYSTEM_ID]?.context?.type === "damage-roll") {
+    } else if (flags.context?.type === "area-fire" || flags.context?.type === "auto-fire") {
+        onWeaponMessageCreated(message);
+    } else if (flags.context?.type === "damage-roll") {
         onDamageMessageCreated(message);
-    } else if (!(message.flags[SYSTEM_ID]?.context) && (message.flags[SYSTEM_ID]?.origin?.type === "action" || message.flags[SYSTEM_ID]?.origin?.type === "feat")) {
+    } else if (!flags.context && (flags.origin?.type === "action" || flags.origin?.type === "feat")) {
         onActionMessageCreated(message);
     }
 });

@@ -7,10 +7,12 @@ import { createHTMLElement, htmlQuery, htmlQueryAll } from "./imports/dom.ts";
 import { extractEphemeralEffects } from "./imports/rules/helpers.ts";
 import { DEGREE_OF_SUCCESS, DEGREE_OF_SUCCESS_STRINGS } from "./imports/degree-of-success.ts";
 import { SAVE_TYPES } from "./imports/actor/values.ts";
+import System from "foundry-pf2e/foundry/client/packages/system.mjs";
 
 
 const MODULE_NAME: string = "pf2e-saves-helper";
 const SOCKET_NAME: string = `module.${MODULE_NAME}`;
+var SYSTEM_ID: SystemId = "pf2e";
 const SETTINGS = {
     HIDE_SAVING_THROWS: "hideSavingThrows",
     IGNORE_HEALING_SAVES: "ignoreHealingSaves",
@@ -67,6 +69,7 @@ type UpdateAppliedMessage = {
 function uuidConvert(uuid: string) { return uuid.replaceAll(".", "-"); }
 
 Hooks.once("init", () => {
+    SYSTEM_ID = game.system.id as SystemId;
     game.socket.on(SOCKET_NAME, (message: SavesHelperSocketMessage) => handleSocketMessage(message));
     game.settings.register(MODULE_NAME, SETTINGS.HIDE_SAVING_THROWS, {
         scope: "world",
@@ -142,7 +145,7 @@ async function updateAppliedToken(message: ChatMessagePF2e, tokenUuid: TokenDocu
 }
 
 async function createSavesMessage(message: ChatMessagePF2e, messageFlags: ChatMessageFlagsPF2e, saveInfo?: SaveInfo) {
-    if (!messageFlags || !messageFlags["pf2e"] || !saveInfo)
+    if (!messageFlags || !messageFlags[SYSTEM_ID] || !saveInfo)
         return;
 
     const savesFlag = createSavesFlag(message, messageFlags, saveInfo);
@@ -161,7 +164,7 @@ async function createSavesMessage(message: ChatMessagePF2e, messageFlags: ChatMe
 }
 
 async function updateSavesMessage(messageId: string, sourceMessage: ChatMessagePF2e, messageFlags: ChatMessageFlagsPF2e, saveInfo?: SaveInfo) {
-    if (!messageFlags || !messageFlags["pf2e"])
+    if (!messageFlags || !messageFlags[SYSTEM_ID])
         return;
 
     const savesFlag = createSavesFlag(sourceMessage, messageFlags, saveInfo);
@@ -169,10 +172,11 @@ async function updateSavesMessage(messageId: string, sourceMessage: ChatMessageP
 }
 
 function onSpellMessageCreated(message: ChatMessagePF2e) {
-    if (!message.flags["pf2e"].origin)
+    let origin = message.flags[SYSTEM_ID]?.origin;
+    if (!origin)
         return;
 
-    const spell = fromUuidSync<SpellPF2e>(message.flags["pf2e"].origin.uuid);
+    const spell = fromUuidSync<SpellPF2e>(origin.uuid);
 
     if (!spell)
         return;
@@ -202,10 +206,11 @@ function getSaveInfoFromSpell(spell: SpellPF2e): SaveInfo | undefined {
 const SAVE_REGEX = /<a class="inline-check.+?data-pf2-check="(?:fortitude|reflex|will)".+?<\/a>/g;
 
 function onActionMessageCreated(message: ChatMessagePF2e) {
-    if (!message.flags["pf2e"].origin)
+    let origin = message.flags[SYSTEM_ID]?.origin;
+    if (!origin)
         return;
 
-    const action = fromUuidSync<AbilityItemPF2e>(message.flags["pf2e"].origin.uuid);
+    const action = fromUuidSync<AbilityItemPF2e>(origin.uuid);
 
     if (!action)
         return;
@@ -223,8 +228,8 @@ function onActionMessageCreated(message: ChatMessagePF2e) {
     const basicString = game.i18n.format("PF2E.InlineCheck.BasicWithSave", { save: link.dataset.pf2Check ? game.i18n.localize(CONFIG.PF2E.saves[link.dataset.pf2Check as SaveType]) : "" });
     const basic = linkFound[0].includes(basicString);
     let actor: ActorPF2e | undefined = undefined;
-    if (link.dataset.against && message.flags["pf2e"].origin.actor) {
-        actor = fromUuidSync(message.flags["pf2e"].origin.actor) as ActorPF2e ?? undefined;
+    if (link.dataset.against && origin.actor) {
+        actor = fromUuidSync(origin.actor) as ActorPF2e ?? undefined;
         if (!actor)
             return;
     }
@@ -270,7 +275,7 @@ function createSavesFlag(message: ChatMessagePF2e, messageFlags: ChatMessageFlag
         targets: [...targets],
         sourceMessage: message.id,
         saveInfo: saveInfo,
-        origin: messageFlags.pf2e.origin,
+        origin: messageFlags[SYSTEM_ID].origin,
         results: {}
     } satisfies SavesFlag;
 }
@@ -278,23 +283,24 @@ function createSavesFlag(message: ChatMessagePF2e, messageFlags: ChatMessageFlag
 Hooks.on("createChatMessage", (message: ChatMessagePF2e, options: ChatMessageCreateOperation, userId: string) => {
     if (userId !== game.user.id)
         return;
-    if (message.flags["pf2e"]?.context?.type === "spell-cast" && message.flags["pf2e"].origin) {
+    if (message.flags[SYSTEM_ID]?.context?.type === "spell-cast" && message.flags[SYSTEM_ID].origin) {
         onSpellMessageCreated(message);
-    } else if (message.flags["pf2e"]?.context?.type === "damage-roll") {
+    } else if (message.flags[SYSTEM_ID]?.context?.type === "damage-roll") {
         onDamageMessageCreated(message);
-    } else if (!(message.flags["pf2e"]?.context) && (message.flags["pf2e"]?.origin?.type === "action" || message.flags["pf2e"]?.origin?.type === "feat")) {
+    } else if (!(message.flags[SYSTEM_ID]?.context) && (message.flags[SYSTEM_ID]?.origin?.type === "action" || message.flags[SYSTEM_ID]?.origin?.type === "feat")) {
         onActionMessageCreated(message);
     }
 });
 
 Hooks.on("preUpdateChatMessage", (message: ChatMessagePF2e, changed: Record<string, ChatMessageFlagsPF2e>, options: DatabaseUpdateOperation<ChatMessage>, userId: string) => {
-    if (!changed.flags["pf2e"])
+    if (!changed.flags[SYSTEM_ID])
         return;
-    const changedFlags = changed.flags["pf2e"];
+    const changedFlags = changed.flags[SYSTEM_ID];
 
     // Handle spell variants
-    if (game.user.id === userId && changedFlags.context?.type === "spell-cast" && changedFlags.origin && message.flags["pf2e"].origin) {
-        const spell = fromUuidSync<SpellPF2e>(message.flags["pf2e"].origin.uuid);
+    let origin = message.flags[SYSTEM_ID]?.origin;
+    if (game.user.id === userId && changedFlags.context?.type === "spell-cast" && changedFlags.origin && origin) {
+        const spell = fromUuidSync<SpellPF2e>(origin.uuid);
         let noSave = false;
         if (!spell)
             noSave = true;
@@ -434,15 +440,16 @@ async function getSavesMessageContent(savesFlag: SavesFlag): Promise<string> {
 Hooks.on("renderChatMessageHTML", async (message: ChatMessagePF2e, html: HTMLElement) => {
     if (message.flags[MODULE_NAME]?.sourceMessage)
         addSavesMessageListeners(message, html);
-    else if (message.flags["pf2e"]?.context?.type === "damage-roll" && message.flags[MODULE_NAME])
+    else if (message.flags[SYSTEM_ID]?.context?.type === "damage-roll" && message.flags[MODULE_NAME])
         onRenderDamageMessage(message, html);
 });
 
 Hooks.on("createMeasuredTemplate", async (measuredTemplate: MeasuredTemplateDocumentPF2e, options: DatabaseCreateOperation<MeasuredTemplateDocumentPF2e>, userId: string) => {
-    if (!measuredTemplate.flags?.pf2e?.messageId || game.userId != userId)
+    let messageId = measuredTemplate.flags[SYSTEM_ID]?.messageId;
+    if (!messageId || game.userId != userId)
         return;
 
-    const sourceMessage = game.messages.get(measuredTemplate.flags.pf2e.messageId);
+    const sourceMessage = game.messages.get(messageId);
     if (!sourceMessage || !sourceMessage.flags[MODULE_NAME]?.savesMessage || !sourceMessage.isAuthor)
         return;
 
@@ -560,7 +567,7 @@ async function onRollCallback(savesMessageId: string, roll: CheckRoll, rollMessa
             if (rollMessage)
                 await game.dice3d?.waitFor3DAnimationByMessageID(rollMessage.id);
         }
-        const context = rollMessage.flags.pf2e?.context as CheckContextChatFlag | undefined;
+        const context = rollMessage.flags[SYSTEM_ID].context as CheckContextChatFlag | undefined;
         const tokenUuid = context?.target?.token;
 
         if (!tokenUuid)
@@ -614,10 +621,11 @@ async function addTargets(message: ChatMessagePF2e, saveStatistic: string) {
 }
 
 async function findSavesMessageFromDamageRoll(message: ChatMessagePF2e): Promise<ChatMessagePF2e | null> {
-    if (!message.flags.pf2e.origin?.uuid || !APPLICABLE_MESSAGE_TYPES.includes(message.flags.pf2e.origin.type as ApplicableMessageType))
+    let origin = message.flags[SYSTEM_ID].origin;
+    if (!origin || !origin.uuid || !APPLICABLE_MESSAGE_TYPES.includes(origin.type as ApplicableMessageType))
         return null;
 
-    const itemUuid = message.flags.pf2e.origin.uuid;
+    const itemUuid = origin.uuid;
 
     const messageFound = game.messages.contents.findLast(m => (m.flags[MODULE_NAME] as SavesFlag)?.origin?.uuid === itemUuid);
 
@@ -695,7 +703,7 @@ async function applyDamageToAll(message: ChatMessagePF2e, tokenDocList: TokenDoc
 
     const hasHealing = roll.kinds.has("healing");
 
-    const options = message.flags["pf2e"]?.origin?.rollOptions;
+    const options = message.flags[SYSTEM_ID]?.origin?.rollOptions;
 
     const healingTraits = getHealingTraitsFromOptions(hasHealing ? options : undefined);
     
@@ -770,7 +778,7 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: HTMLElement) {
     if (!targets || targets.length == 0)
         return;
 
-    const healingTraits = game.settings.get(MODULE_NAME, SETTINGS.APPLY_HEALING) ? getHealingTraitsFromOptions(message.flags.pf2e.origin?.rollOptions) : undefined;
+    const healingTraits = game.settings.get(MODULE_NAME, SETTINGS.APPLY_HEALING) ? getHealingTraitsFromOptions(message.flags[SYSTEM_ID].origin?.rollOptions) : undefined;
 
     const tokenDocList = targets.map(t => fromUuidSync(t) as TokenDocumentPF2e).filter(t => t && t.isOwner);
 
@@ -963,7 +971,7 @@ async function applyDamageFromMessage(
     const damage = multiplier < 0 ? multiplier * roll.total + addend : roll.alter(multiplier, addend) as Rolled<DamageRoll>;
 
     // Get origin roll options and apply damage to a contextual clone: this may influence condition IWR, for example
-    const messageRollOptions = [...(message.flags.pf2e.context?.options ?? [])];
+    const messageRollOptions = [...(message.flags[SYSTEM_ID].context?.options ?? [])];
     const originRollOptions = messageRollOptions
         .filter((o) => o.startsWith("self:"))
         .map((o) => o.replace(/^self/, "origin"));

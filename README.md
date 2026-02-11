@@ -16,7 +16,7 @@ Individual buttons for applying damage to each targets
 
 Colored buttons for results of basic saves, buttons to apply to all
 
-<img width="299" height="377" alt="image" src="https://github.com/user-attachments/assets/e8710671-4fce-414c-9079-4e606c4dc67d" />
+<img width="295" height="397" alt="image" src="https://github.com/user-attachments/assets/af83c6ef-9571-4c0f-85f1-bbff8fade2c3" />
 
 Automatically set targets when placing templates
 Buttons to apply splash damage in tokens around

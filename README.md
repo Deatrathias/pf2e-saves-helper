@@ -1,10 +1,12 @@
 # PF2e Saves Helper
+![Total Downloads](https://img.shields.io/github/downloads/Deatrathias/pf2e-saves-helper/module.zip?displayAssetName=false&label=Total%20Downloads)
+![Downloads](https://img.shields.io/github/downloads/Deatrathias/pf2e-saves-helper/latest/module.zip?displayAssetName=false&label=Latest%20Downloads)
 
 A module to help managing saving throws and applying damage to multiple tokens. Inspired by PF2e Target Damage
 
 For Pathfinder/Starfinder 2e
 
-# Features
+## Features
 
 Shows a saving throw message for spells and actions with saving throws
 

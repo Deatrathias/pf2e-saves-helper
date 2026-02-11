@@ -266,7 +266,7 @@ function createSavesFlag(message: ChatMessagePF2e, messageFlags: ChatMessageFlag
             targets: [], results: {}
         } satisfies SavesFlag;
     const targets = game.user.targets.filter(t => filterTarget(t, false, saveInfo.saveType)).map(t => t.document.uuid);
-    const item = fromUuidSync(messageFlags.pf2e?.origin?.uuid ?? "");
+    const item = fromUuidSync(messageFlags[SYSTEM_ID]?.origin?.uuid ?? "");
     return {
         label: item?.name ? {
             value: item.name,
@@ -805,6 +805,8 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: HTMLElement) {
             }
 
             let degreeOfSuccess: ZeroToThree | undefined = undefined;
+
+            damageTokenContainer.append(createHTMLElement("hr"));
 
             let tokenHeader = createHTMLElement("header", { innerHTML: token.name });
             tokenHeader.addEventListener("mouseenter", (event) => token.object?.emitHoverIn(event));

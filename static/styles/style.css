@@ -116,25 +116,19 @@
 }
 
 .pf2e-saves-helper.damage-token header.criticalFailure {
-	color: var(--color-text-light-0);
-	background-color: var(--degree-failure-critical, rgb(255, 0, 0));
-	font-weight: bold;
+	color: var(--degree-failure-critical, rgb(255, 0, 0));
 }
 
 .pf2e-saves-helper.damage-token header.failure {
-	color: var(--color-text-light-0);
-	background-color: var(--degree-failure, rgb(255, 69, 0));
+	color: var(--degree-failure, rgb(255, 69, 0));
 }
 
 .pf2e-saves-helper.damage-token header.success {
-	color: var(--color-text-light-0);
-	background-color: var(--degree-success, rgb(0, 0, 255));
+	color: var(--degree-success, rgb(0, 0, 255));
 }
 
 .pf2e-saves-helper.damage-token header.criticalSuccess {
-	color: var(--color-text-light-0);
-	background-color: var(--degree-success-critical, rgb(0, 128, 0));
-	font-weight: bold;
+	color: var(--degree-success-critical, rgb(0, 128, 0));
 }
 
 .pf2e-saves-helper .highlighted {

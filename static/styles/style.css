@@ -117,6 +117,7 @@
 
 .pf2e-saves-helper.damage-token header.criticalFailure {
 	color: var(--degree-failure-critical, rgb(255, 0, 0));
+	font-weight: bold;
 }
 
 .pf2e-saves-helper.damage-token header.failure {
@@ -129,6 +130,7 @@
 
 .pf2e-saves-helper.damage-token header.criticalSuccess {
 	color: var(--degree-success-critical, rgb(0, 128, 0));
+	font-weight: bold;
 }
 
 .pf2e-saves-helper .highlighted {

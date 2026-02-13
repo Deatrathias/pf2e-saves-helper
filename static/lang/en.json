@@ -10,7 +10,9 @@
             "HideSavingThrows": "Hide Saving Throw Messages",
             "HideSavingThrowsHint": "Do not display the message in chat for saving throws rolled from the saves message.",
             "IgnoreHealingSaves": "Ignore Save Targets For Healing",
-            "IgnoreHealingSavesHint": "Hide targets's save button for targets that would be healed if the spell has the healing trait."
+            "IgnoreHealingSavesHint": "Hide targets's save button for targets that would be healed if the spell has the healing trait.",
+            "SkipMultipleRollDialog": "Skip Dialog for Multiple Rolls",
+            "SkipMultipleRollDialogHint": "Automatically skip the dialog window when using Roll All/Roll NPCs in a save message"
         }
     }
 }

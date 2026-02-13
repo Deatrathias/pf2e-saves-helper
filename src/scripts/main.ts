@@ -15,7 +15,8 @@ var SYSTEM_ID: SystemId = "pf2e";
 const SETTINGS = {
     HIDE_SAVING_THROWS: "hideSavingThrows",
     IGNORE_HEALING_SAVES: "ignoreHealingSaves",
-    APPLY_HEALING: "applyHealing"
+    APPLY_HEALING: "applyHealing",
+    SKIP_MULTIPLE_ROLL_DIALOG: "skipMultipleRollDialog",
 };
 
 const APPLICABLE_MESSAGE_TYPES = ["spell", "action", "feat", "weapon"] as const;
@@ -93,6 +94,15 @@ Hooks.once("init", () => {
         hint: "PF2E-SAVES-HELPER.Settings.ApplyHealingHint",
         type: Boolean,
         default: true,
+        requiresReload: false
+    });
+    game.settings.register(MODULE_NAME, SETTINGS.SKIP_MULTIPLE_ROLL_DIALOG, {
+        scope: "client",
+        config: true,
+        name: "PF2E-SAVES-HELPER.Settings.SkipMultipleRollDialog",
+        hint: "PF2E-SAVES-HELPER.Settings.SkipMultipleRollDialogHint",
+        type: Boolean,
+        default: false,
         requiresReload: false
     });
 });
@@ -531,12 +541,12 @@ function addSavesMessageListeners(message: ChatMessagePF2e, html: HTMLElement) {
     }
 
     button = htmlQuery(html, "[data-action='roll-saves-all']");
-    button?.addEventListener("click", async (event) => Promise.all(incompleteRollTokenList.map(t => rollSave(event, message.id, savesFlag, t))));
+    button?.addEventListener("click", async (event) => Promise.all(incompleteRollTokenList.map(t => rollSave(event, message.id, savesFlag, t, game.settings.get(MODULE_NAME, SETTINGS.SKIP_MULTIPLE_ROLL_DIALOG) as boolean))));
     button = htmlQuery(html, "[data-action='roll-saves-npc']");
-    button?.addEventListener("click", async (event) => Promise.all(incompleteRollNPCList.map(t => rollSave(event, message.id, savesFlag, t))));
+    button?.addEventListener("click", async (event) => Promise.all(incompleteRollNPCList.map(t => rollSave(event, message.id, savesFlag, t, game.settings.get(MODULE_NAME, SETTINGS.SKIP_MULTIPLE_ROLL_DIALOG) as boolean))));
 }
 
-async function rollSave(event: MouseEvent, messageId: string, savesFlag: SavesFlag, tokenDoc: TokenDocumentPF2e) {
+async function rollSave(event: MouseEvent, messageId: string, savesFlag: SavesFlag, tokenDoc: TokenDocumentPF2e, forceSkipDialog: boolean = false) {
     event.stopPropagation();
 
     if (!savesFlag.saveInfo)
@@ -555,7 +565,7 @@ async function rollSave(event: MouseEvent, messageId: string, savesFlag: SavesFl
         origin: savesFlag.origin.actor ? await fromUuid(savesFlag.origin.actor) as ActorPF2e | null : undefined,
         dc: savesFlag.saveInfo.dc,
         token: tokenDoc,
-        skipDialog: event.shiftKey,
+        skipDialog: forceSkipDialog !== event.shiftKey,
         identifier: messageId,
         rollMode: tokenDoc.hidden ? "gmroll" : "roll",
         extraRollOptions: savesFlag.saveInfo.extraRollOptions,

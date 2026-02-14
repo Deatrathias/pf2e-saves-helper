@@ -570,7 +570,7 @@ async function rollSave(event: MouseEvent, messageId: string, savesFlag: SavesFl
         rollMode: tokenDoc.hidden ? "gmroll" : "roll",
         extraRollOptions: savesFlag.saveInfo.extraRollOptions,
         createMessage: !game.settings.get(MODULE_NAME, SETTINGS.HIDE_SAVING_THROWS),
-        callback: async (roll, outcome, rollMessage, event) => onRollCallback(messageId, roll, rollMessage)
+        callback: (roll, outcome, rollMessage, event) => onRollCallback(messageId, roll, rollMessage)
     });
 }
 
@@ -594,10 +594,9 @@ async function onRollCallback(savesMessageId: string, roll: CheckRoll, rollMessa
         if (!roll || roll.degreeOfSuccess == null || !roll.total)
             return;
 
-        if (game.modules.get("dice-so-nice")?.active) {
-            if (rollMessage)
-                await game.dice3d?.waitFor3DAnimationByMessageID(rollMessage.id);
-        }
+        if (game.modules.get("dice-so-nice")?.active && rollMessage?._dice3danimating)
+            await game.dice3d?.waitFor3DAnimationByMessageID(rollMessage.id);
+        
         const context = rollMessage.flags[SYSTEM_ID].context as CheckContextChatFlag | undefined;
         const tokenUuid = context?.target?.token;
 

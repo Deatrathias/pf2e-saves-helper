@@ -1,13 +1,13 @@
-import { AbilityItemPF2e, ActorPF2e, ChatMessageFlagsPF2e, ChatMessagePF2e, CheckContextChatFlag, CheckRoll, DamageRoll, DegreeOfSuccessIndex, DegreeOfSuccessString, ItemOriginFlag, ItemPF2e, MeasuredTemplateDocumentPF2e, MeasuredTemplatePF2e, SaveType, SpellPF2e, TokenDocumentPF2e, TokenPF2e, WeaponPF2e, ZeroToThree } from "foundry-pf2e";
-import { Rolled } from "foundry-pf2e/foundry/client/dice/roll.mjs";
-import { ChatMessageCreateOperation } from "foundry-pf2e/foundry/client/documents/chat-message.mjs";
-import { DatabaseUpdateOperation, DatabaseCreateOperation } from "foundry-pf2e/foundry/common/abstract/_module.mjs";
-import { TokenDocumentUUID } from "foundry-pf2e/foundry/common/documents/_module.mjs";
-import { createHTMLElement, htmlQuery, htmlQueryAll } from "./imports/dom.ts";
+import { AbilityItemPF2e, ActorPF2e, ChatMessageFlagsPF2e, ChatMessagePF2e, CheckContextChatFlag, CheckRoll, DamageRoll, DegreeOfSuccessIndex, DegreeOfSuccessString, ItemOriginFlag, ItemPF2e, MeasuredTemplateDocumentPF2e, MeasuredTemplatePF2e, SaveType, SpellPF2e, TokenDocumentPF2e, TokenPF2e, ZeroToThree } from "@7h3laughingman/pf2e-types";
+import { Rolled } from "@7h3laughingman/foundry-types/client/dice/roll.mjs";
+import { ChatMessageCreateOperation } from "@7h3laughingman/foundry-types/common/documents/chat-message.mjs";
+import { DatabaseUpdateOperation, DatabaseCreateOperation } from "@7h3laughingman/foundry-types/common/abstract/_module.mjs";
+import { TokenDocumentUUID } from "@7h3laughingman/foundry-types/common/documents/_module.mjs";
+import { createHTMLElement, htmlQuery, htmlQueryAll } from "@7h3laughingman/pf2e-helpers/utilities";
 import { extractEphemeralEffects } from "./imports/rules/helpers.ts";
-import { DEGREE_OF_SUCCESS, DEGREE_OF_SUCCESS_STRINGS } from "./imports/degree-of-success.ts";
 import { SAVE_TYPES } from "./imports/actor/values.ts";
-
+import { DEGREE_OF_SUCCESS, DEGREE_OF_SUCCESS_STRINGS } from "./imports/degree-of-success.ts";
+import { ChatMessageDSN, GameDSN } from "./imports/dice-so-nice.js";
 
 const MODULE_NAME: string = "pf2e-saves-helper";
 const SOCKET_NAME: string = `module.${MODULE_NAME}`;
@@ -267,7 +267,7 @@ function getSaveInfoFromDataset(dataset: DOMStringMap, basic: boolean, actor?: A
         return undefined;
     const { pf2Check, pf2Dc, against, pf2RollOptions, pf2Traits } = dataset;
 
-    if (!pf2Check || !SAVE_TYPES.includes(pf2Check as SaveType) || (!pf2Dc && !against))
+    if (!pf2Check || !(pf2Check in SAVE_TYPES) || (!pf2Dc && !against))
         return undefined;
 
     let dc = pf2Dc ? Number(pf2Dc) : undefined;
@@ -448,7 +448,7 @@ async function getSavesMessageContent(savesFlag: SavesFlag): Promise<string> {
         const hasResult = savesFlag.results[convertedUuid];
 
         const result = hasResult ? savesFlag.results[convertedUuid] : null;
-        const degreeOfSuccess = result ? DEGREE_OF_SUCCESS_STRINGS[result.degreeOfSuccess] : "failure";
+        const degreeOfSuccess = result ? DEGREE_OF_SUCCESS_STRINGS[result.degreeOfSuccess]: "failure";
         const rollValue = result ? result.rollValue.toFixed() : 0;
         const degreeOfSuccessLabel = "PF2E.Check.Result.Degree.Check." + degreeOfSuccess;
 
@@ -594,8 +594,8 @@ async function onRollCallback(savesMessageId: string, roll: CheckRoll, rollMessa
         if (!roll || roll.degreeOfSuccess == null || !roll.total)
             return;
 
-        if (game.modules.get("dice-so-nice")?.active && rollMessage?._dice3danimating)
-            await game.dice3d?.waitFor3DAnimationByMessageID(rollMessage.id);
+        if (game.modules.get("dice-so-nice")?.active && rollMessage && (rollMessage as ChatMessageDSN)._dice3danimating)
+            await (game as GameDSN).dice3d?.waitFor3DAnimationByMessageID(rollMessage.id);
         
         const context = rollMessage.flags[SYSTEM_ID].context as CheckContextChatFlag | undefined;
         const tokenUuid = context?.target?.token;

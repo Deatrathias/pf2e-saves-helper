@@ -15,7 +15,9 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "foundry-pf2e": "github:7H3LaughingMan/foundry-pf2e",
+    "@7h3laughingman/foundry-types": "^13.351.2",
+    "@7h3laughingman/pf2e-types": "^7.10.0",
+    "@7h3laughingman/pf2e-helpers": "^7.10.0",
     "remeda": "^2.32.0"
   },
   "repository": {

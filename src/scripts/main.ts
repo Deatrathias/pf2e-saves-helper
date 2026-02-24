@@ -267,7 +267,7 @@ function getSaveInfoFromDataset(dataset: DOMStringMap, basic: boolean, actor?: A
         return undefined;
     const { pf2Check, pf2Dc, against, pf2RollOptions, pf2Traits } = dataset;
 
-    if (!pf2Check || !(pf2Check in SAVE_TYPES) || (!pf2Dc && !against))
+    if (!pf2Check || !(SAVE_TYPES.includes(pf2Check as SaveType)) || (!pf2Dc && !against))
         return undefined;
 
     let dc = pf2Dc ? Number(pf2Dc) : undefined;

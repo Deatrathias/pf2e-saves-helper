@@ -1,13 +1,12 @@
-import { AbilityItemPF2e, ActorPF2e, ChatMessageFlagsPF2e, ChatMessagePF2e, CheckContextChatFlag, CheckRoll, DamageRoll, DegreeOfSuccessIndex, DegreeOfSuccessString, ItemOriginFlag, ItemPF2e, MeasuredTemplateDocumentPF2e, MeasuredTemplatePF2e, SaveType, SpellPF2e, TokenDocumentPF2e, TokenPF2e, ZeroToThree } from "@7h3laughingman/pf2e-types";
+import { AbilityItemPF2e, ActorPF2e, ChatMessageFlagsPF2e, ChatMessagePF2e, CheckContextChatFlag, CheckRoll, DamageRoll, DegreeOfSuccessIndex, DegreeOfSuccessString, ItemOriginFlag, ItemPF2e, RegionDocumentPF2e, SaveType, SpellPF2e, TokenDocumentPF2e, TokenPF2e, ZeroToThree } from "@7h3laughingman/pf2e-types";
 import { Rolled } from "@7h3laughingman/foundry-types/client/dice/roll.mjs";
-import { ChatMessageCreateOperation } from "@7h3laughingman/foundry-types/common/documents/chat-message.mjs";
-import { DatabaseUpdateOperation, DatabaseCreateOperation } from "@7h3laughingman/foundry-types/common/abstract/_module.mjs";
 import { TokenDocumentUUID } from "@7h3laughingman/foundry-types/common/documents/_module.mjs";
 import { createHTMLElement, htmlQuery, htmlQueryAll } from "@7h3laughingman/pf2e-helpers/utilities";
 import { extractEphemeralEffects } from "./imports/rules/helpers.ts";
 import { SAVE_TYPES } from "./imports/actor/values.ts";
 import { DEGREE_OF_SUCCESS, DEGREE_OF_SUCCESS_STRINGS } from "./imports/degree-of-success.ts";
 import { ChatMessageDSN, GameDSN } from "./imports/dice-so-nice.js";
+import { ChatMessageCreateOperation } from "@7h3laughingman/foundry-types/client/documents/chat-message.mjs";
 
 const MODULE_NAME: string = "pf2e-saves-helper";
 const SOCKET_NAME: string = `module.${MODULE_NAME}`;
@@ -323,42 +322,47 @@ Hooks.on("createChatMessage", (message: ChatMessagePF2e, options: ChatMessageCre
     }
 });
 
-Hooks.on("preUpdateChatMessage", (message: ChatMessagePF2e, changed: Record<string, ChatMessageFlagsPF2e>, options: DatabaseUpdateOperation<ChatMessage>, userId: string) => {
-    if (!changed.flags[SYSTEM_ID])
-        return;
-    const changedFlags = changed.flags[SYSTEM_ID];
+Hooks.on("preUpdateChatMessage", (message: ChatMessagePF2e, changed: Record<string, ChatMessageFlagsPF2e>, options: unknown, userId: string) => {
+    if (changed.flags?.[SYSTEM_ID]) {
+        const changedFlags = changed.flags[SYSTEM_ID];
 
-    // Handle spell variants
-    let origin = message.flags[SYSTEM_ID]?.origin;
-    if (game.user.id === userId && changedFlags.context?.type === "spell-cast" && changedFlags.origin && origin) {
-        const spell = fromUuidSync<SpellPF2e>(origin.uuid);
-        let noSave = false;
-        if (!spell)
-            noSave = true;
-        else if (spell.hasVariants) {
-            const changedOrigin = changedFlags.origin;
-            if (changedOrigin.variant) {
-                const variant = spell.overlays.overrideVariants.find(s => changedOrigin.variant && s.variantId === changedOrigin.variant.overlays[0]);
-                if (!variant || !variant.system.defense?.save)
-                    noSave = true;
-                else {
-                    if (message.flags[MODULE_NAME]?.savesMessage) {
-                        updateSavesMessage(message.flags[MODULE_NAME].savesMessage as string, message, changed.flags, getSaveInfoFromSpell(variant));
-                    }
+        // Handle spell variants
+        let origin = message.flags[SYSTEM_ID]?.origin;
+        if (game.user.id === userId && changedFlags.context?.type === "spell-cast" && changedFlags.origin && origin) {
+            const spell = fromUuidSync<SpellPF2e>(origin.uuid);
+            let noSave = false;
+            if (!spell)
+                noSave = true;
+            else if (spell.hasVariants) {
+                const changedOrigin = changedFlags.origin;
+                if (changedOrigin.variant) {
+                    const variant = spell.overlays.overrideVariants.find(s => changedOrigin.variant && s.variantId === changedOrigin.variant.overlays[0]);
+                    if (!variant || !variant.system.defense?.save)
+                        noSave = true;
                     else {
-                        createSavesMessage(message, changed.flags, getSaveInfoFromSpell(variant));
+                        if (message.flags[MODULE_NAME]?.savesMessage) {
+                            updateSavesMessage(message.flags[MODULE_NAME].savesMessage as string, message, changed.flags, getSaveInfoFromSpell(variant));
+                        }
+                        else {
+                            createSavesMessage(message, changed.flags, getSaveInfoFromSpell(variant));
+                        }
                     }
                 }
+                else {
+                    noSave = true;
+                }
             }
-            else {
-                noSave = true;
-            }
-        }
 
-        if (noSave && message.flags[MODULE_NAME]?.savesMessage) {
-            ChatMessage.deleteDocuments([message.flags[MODULE_NAME].savesMessage as string]);
-            message.update({ [`flags.${MODULE_NAME}.-=savesMessage`]: null });
+            if (noSave && message.flags[MODULE_NAME]?.savesMessage) {
+                ChatMessage.deleteDocuments([message.flags[MODULE_NAME].savesMessage as string]);
+                message.update({ [`flags.${MODULE_NAME}.-=savesMessage`]: null });
+            }
         }
+    }
+
+    if (message.flags?.[MODULE_NAME]?.sourceMessage && changed.flags?.[MODULE_NAME]?.results) {
+        const savesFlag = foundry.utils.mergeObject(message.flags[MODULE_NAME], changed.flags[MODULE_NAME]) as SavesFlag;
+        getSavesMessageContent(savesFlag).then(content => message.update({ content }));
     }
 });
 
@@ -475,7 +479,7 @@ Hooks.on("renderChatMessageHTML", async (message: ChatMessagePF2e, html: HTMLEle
         onRenderDamageMessage(message, html);
 });
 
-Hooks.on("createMeasuredTemplate", async (measuredTemplate: MeasuredTemplateDocumentPF2e, options: DatabaseCreateOperation<MeasuredTemplateDocumentPF2e>, userId: string) => {
+Hooks.on("createMeasuredTemplate", async (measuredTemplate: MeasuredTemplateDocumentPF2e, options: unknown, userId: string) => {
     let messageId = measuredTemplate.flags[SYSTEM_ID]?.messageId;
     if (!messageId || game.userId != userId)
         return;
@@ -500,6 +504,42 @@ Hooks.on("createMeasuredTemplate", async (measuredTemplate: MeasuredTemplateDocu
     canvas.tokens.setTargets(tokenList);
     addTargets(savesMessage, saveType);
 });
+
+Hooks.on("createRegion", (region: RegionDocumentPF2e, options: unknown, userId: string) => {
+    let messageId = region.flags[SYSTEM_ID]?.messageId;
+    if (!messageId || game.userId !== userId)
+        return;
+
+    targetRegion(region, messageId);
+});
+
+Hooks.on("updateRegion", (region: RegionDocumentPF2e, changed: unknown, options: unknown, userId: string) => {
+    let messageId = region.flags[SYSTEM_ID]?.messageId;
+    if (!messageId || game.userId !== userId)
+        return;
+
+    targetRegion(region, messageId);
+});
+
+function targetRegion(region: RegionDocumentPF2e, messageId: string) {
+    const sourceMessage = game.messages.get(messageId);
+    if (!sourceMessage || !sourceMessage.flags[MODULE_NAME]?.savesMessage || !sourceMessage.isOwner)
+        return;
+
+    const savesMessage = game.messages.get(sourceMessage.flags[MODULE_NAME]?.savesMessage as string);
+    if (!savesMessage || !savesMessage.flags[MODULE_NAME])
+        return;
+
+    const savesFlag = savesMessage.flags[MODULE_NAME] as SavesFlag;
+
+    const saveType = savesFlag.saveInfo?.saveType;
+    if (!saveType)
+        return;
+
+    const tokenList = [...region.parent?.tokens.filter(t => t.testInsideRegion(region)).map(t => t.id) ?? []];
+    canvas.tokens.setTargets(tokenList);
+    addTargets(savesMessage, saveType);
+}
 
 function addSavesMessageListeners(message: ChatMessagePF2e, html: HTMLElement) {
     const savesFlag = message.flags[MODULE_NAME] as SavesFlag;
@@ -533,31 +573,57 @@ function addSavesMessageListeners(message: ChatMessagePF2e, html: HTMLElement) {
                     if (button.dataset.playerOwned === "npc")
                         incompleteRollNPCList.push(targetToken);
                     button.classList.remove("no-display");
-                    button.addEventListener("click", (event) => rollSave(event, message.id, savesFlag, targetToken));
+                    button.addEventListener("click", async (event) => { 
+                        const result = await rollSave(event, message.id, savesFlag, targetToken);
+                        if (result)
+                            updateSaveMessageResult(message, { [targetToken.uuid]: result });
+                    });
                 }
             }
         }
     }
 
     button = htmlQuery(html, "[data-action='roll-saves-all']");
-    button?.addEventListener("click", async (event) => Promise.all(incompleteRollTokenList.map(t => rollSave(event, message.id, savesFlag, t, game.settings.get(MODULE_NAME, SETTINGS.SKIP_MULTIPLE_ROLL_DIALOG) as boolean))));
+    button?.addEventListener("click", async (event) => {
+        const skip =  game.settings.get(MODULE_NAME, SETTINGS.SKIP_MULTIPLE_ROLL_DIALOG) as boolean;
+
+        const results = await Promise.all(incompleteRollTokenList.map(t => rollSave(event, message.id, savesFlag, t, skip).then(r => { return { token: t.uuid, result: r } })))
+        .then(result => result.reduce((accumulator, current) => {
+            if (current !== null && current.result !== null)
+                accumulator[current.token] = current.result;
+            return accumulator;
+        }, {} as Record<string, SaveResult>));
+        await updateSaveMessageResult(message, results);
+    });
     button = htmlQuery(html, "[data-action='roll-saves-npc']");
-    button?.addEventListener("click", async (event) => Promise.all(incompleteRollNPCList.map(t => rollSave(event, message.id, savesFlag, t, game.settings.get(MODULE_NAME, SETTINGS.SKIP_MULTIPLE_ROLL_DIALOG) as boolean))));
+    button?.addEventListener("click", async (event) => {
+        const skip =  game.settings.get(MODULE_NAME, SETTINGS.SKIP_MULTIPLE_ROLL_DIALOG) as boolean;
+
+        const results = await Promise.all(incompleteRollNPCList.map(t => rollSave(event, message.id, savesFlag, t, skip).then(r => { return { token: t.uuid, result: r } })))
+        .then(result => result.reduce((accumulator, current) => {
+            if (current !== null && current.result !== null)
+                accumulator[current.token] = current.result;
+            return accumulator;
+        }, {} as Record<string, SaveResult>));
+        await updateSaveMessageResult(message, results);
+    });
 }
 
-async function rollSave(event: MouseEvent, messageId: string, savesFlag: SavesFlag, tokenDoc: TokenDocumentPF2e, forceSkipDialog: boolean = false) {
+async function rollSave(event: MouseEvent, messageId: string, savesFlag: SavesFlag, tokenDoc: TokenDocumentPF2e, forceSkipDialog: boolean = false): Promise<SaveResult | null> {
     event.stopPropagation();
 
     if (!savesFlag.saveInfo)
-        return;
+        return null;
 
     const stat = tokenDoc.actor?.getStatistic(savesFlag.saveInfo.saveType);
 
     if (!stat)
-        return;
+        return null;
 
     if (!savesFlag.origin)
-        return;
+        return null;
+
+    let result: SaveResult | null = null;
 
     await stat.check.roll({
         item: await fromUuid(savesFlag.origin.uuid) as ItemPF2e<ActorPF2e> | null,
@@ -566,11 +632,16 @@ async function rollSave(event: MouseEvent, messageId: string, savesFlag: SavesFl
         token: tokenDoc,
         skipDialog: forceSkipDialog !== event.shiftKey,
         identifier: messageId,
+        // @ts-ignore
         rollMode: tokenDoc.hidden ? "gmroll" : "roll",
+        messageMode: tokenDoc.hidden ? "gm" : "public",
         extraRollOptions: savesFlag.saveInfo.extraRollOptions,
         createMessage: !game.settings.get(MODULE_NAME, SETTINGS.HIDE_SAVING_THROWS),
-        callback: (roll, outcome, rollMessage, event) => onRollCallback(messageId, roll, rollMessage)
+        callback: async (roll, outcome, rollMessage, event) => { 
+            result = await onRollCallback(messageId, roll, rollMessage) 
+        }
     });
+    return result;
 }
 
 Hooks.on("pf2e.reroll", (originalRoll: CheckRoll, reroll: CheckRoll, heroPoint: boolean, keep: string) => {
@@ -583,15 +654,23 @@ Hooks.on("pf2e.reroll", (originalRoll: CheckRoll, reroll: CheckRoll, heroPoint: 
             if (message.rolls?.length <= 0)
                 return;
 
-            onRollCallback(savesMesage.id, reroll, message);
+            const tokenUuid = (message.flags[SYSTEM_ID]?.context as CheckContextChatFlag | undefined)?.target?.token;
+            if (!tokenUuid)
+                return;
+
+            onRollCallback(savesMesage.id, reroll, message).then(result => {
+                if (result != null)
+                    updateSaveMessageResult(savesMesage, { [tokenUuid]: result })
+            });
+            
         });
     }
 });
 
-async function onRollCallback(savesMessageId: string, roll: CheckRoll, rollMessage: ChatMessagePF2e) {
+async function onRollCallback(savesMessageId: string, roll: CheckRoll, rollMessage: ChatMessagePF2e): Promise<SaveResult | null> {
     {
-        if (!roll || !roll.degreeOfSuccess || !roll.total)
-            return;
+        if (!roll || roll.degreeOfSuccess === null || roll.total === undefined)
+            return null;
 
         if (game.modules.get("dice-so-nice")?.active && rollMessage && (rollMessage as ChatMessageDSN)._dice3danimating)
             await (game as GameDSN).dice3d?.waitFor3DAnimationByMessageID(rollMessage.id);
@@ -600,32 +679,35 @@ async function onRollCallback(savesMessageId: string, roll: CheckRoll, rollMessa
         const tokenUuid = context?.target?.token;
 
         if (!tokenUuid)
-            return;
+            return null;
 
         const message = game.messages.get(savesMessageId);
         if (!message || !message.flags[MODULE_NAME])
-            return;
+            return null;
 
-        let savesFlag = message.flags[MODULE_NAME] as SavesFlag;
+        
+        return { degreeOfSuccess: roll.degreeOfSuccess, rollValue: roll.total };
+    }
+}
 
-        if (message.isOwner) {
-            const resultEntry = { degreeOfSuccess: roll.degreeOfSuccess, rollValue: roll.total };
-            savesFlag.results[uuidConvert(tokenUuid)] = resultEntry;
-            ChatMessage.updateDocuments([{
-                _id: message.id,
-                [`flags.${MODULE_NAME}.results.${uuidConvert(tokenUuid)}`]: { degreeOfSuccess: roll.degreeOfSuccess, rollValue: roll.total } satisfies SaveResult,
-                content: await getSavesMessageContent(savesFlag)
-            }]);
-        }
-        else {
+async function updateSaveMessageResult(message: ChatMessagePF2e, results: Record<string, SaveResult>) {
+    const flags = message.flags[MODULE_NAME] as SavesFlag;
+    if (!flags)
+        return;
+
+    if (message.isOwner) {
+        const update = Object.fromEntries(Object.entries(results).map(r => [`flags.${MODULE_NAME}.results.${uuidConvert(r[0])}`, r[1]]));
+        await message.update(update);
+    } else {
+        Object.entries(results).forEach(r => {
             game.socket.emit(SOCKET_NAME, {
                 type: "save-rolled",
-                message: savesMessageId,
-                token: tokenUuid,
-                degreeOfSuccess: roll.degreeOfSuccess,
-                rollValue: roll.total
+                message: message.id,
+                token: r[0] as TokenDocumentUUID,
+                degreeOfSuccess: r[1].degreeOfSuccess,
+                rollValue: r[1].rollValue
             } satisfies SaveRolledMessage);
-        }
+        });
     }
 }
 
@@ -642,11 +724,14 @@ function filterTarget(target: TokenPF2e, ignoreDead: boolean, saveStatistic: str
     return true;
 }
 
-async function addTargets(message: ChatMessagePF2e, saveStatistic: string) {
+async function addTargets(message: ChatMessagePF2e, saveStatistic?: string) {
     const targets = game.user.targets.filter(t => filterTarget(t, false, saveStatistic)).map(t => t.document.uuid);
     const savesFlag = message.flags[MODULE_NAME] as SavesFlag;
     savesFlag.targets = [...targets];
-    await message.update({ [`flags.${MODULE_NAME}.targets`]: savesFlag.targets, content: await getSavesMessageContent(savesFlag) });
+    if (savesFlag.sourceMessage)
+        await message.update({ [`flags.${MODULE_NAME}.targets`]: savesFlag.targets, content: await getSavesMessageContent(savesFlag) });
+    else
+        await message.update({ [`flags.${MODULE_NAME}.targets`]: savesFlag.targets });
 }
 
 async function findSavesMessageFromDamageRoll(message: ChatMessagePF2e): Promise<ChatMessagePF2e | null> {
@@ -780,19 +865,21 @@ async function applyDamageToAll(message: ChatMessagePF2e, tokenDocList: TokenDoc
         await message.update(messageUpdate);
 }
 
-function renderDamageAllButtons(message: ChatMessagePF2e, tokenDocList: TokenDocumentPF2e[], savesFlag: SavesFlag, rollIndex: number): HTMLElement {
-    let buttonContainer = createHTMLElement("div", { classes: ["saves-buttons"] });
+function renderDamageAllButtons(message: ChatMessagePF2e, tokenDocList: TokenDocumentPF2e[], savesFlag: SavesFlag | undefined, rollIndex: number): HTMLElement {
+    const buttonContainer = createHTMLElement("div", { classes: ["saves-buttons"] });
 
     const applieds = message.flags[MODULE_NAME]?.applied as Record<string, unknown> | undefined;
 
     const unappliedDamageTokenList = applieds ? tokenDocList.filter(t => !applieds[uuidConvert(t.uuid)]) : tokenDocList;
 
-    let rollAll = createHTMLElement("a", { innerHTML: '<i class="fa-solid fa-users"></i>', dataset: { tooltip: game.i18n.localize("PF2E-SAVES-HELPER.ApplyAll") } });
-    rollAll.addEventListener("click", async (event) => await applyDamageToAll(message, unappliedDamageTokenList, savesFlag, rollIndex));
-    buttonContainer.append(rollAll);
-    let rollNPCs = createHTMLElement("a", { innerHTML: '<i class="fa-solid fa-users-cog"></i>', dataset: { tooltip: game.i18n.localize("PF2E-SAVES-HELPER.ApplyNPC") } });
-    rollNPCs.addEventListener("click", async (event) => await applyDamageToAll(message, unappliedDamageTokenList.filter(t => !t.hasPlayerOwner), savesFlag, rollIndex));
-    buttonContainer.append(rollNPCs);
+    if (savesFlag?.saveInfo?.basic && tokenDocList.length > 0) {
+        const rollAll = createHTMLElement("a", { innerHTML: '<i class="fa-solid fa-users"></i>', dataset: { visbility: "gm", tooltip: game.i18n.localize("PF2E-SAVES-HELPER.ApplyAll") } });
+        rollAll.addEventListener("click", async (event) => await applyDamageToAll(message, unappliedDamageTokenList, savesFlag, rollIndex));
+        buttonContainer.appendChild(rollAll);
+        const rollNPCs = createHTMLElement("a", { innerHTML: '<i class="fa-solid fa-users-cog"></i>', dataset: { visbility: "gm", tooltip: game.i18n.localize("PF2E-SAVES-HELPER.ApplyNPC") } });
+        rollNPCs.addEventListener("click", async (event) => await applyDamageToAll(message, unappliedDamageTokenList.filter(t => !t.hasPlayerOwner), savesFlag, rollIndex));
+        buttonContainer.appendChild(rollNPCs);
+    }
     return buttonContainer;
 }
 
@@ -800,6 +887,13 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: HTMLElement) {
     if (!message.flags[MODULE_NAME])
         return;
 
+    if (message.flags[MODULE_NAME].targets !== undefined) {
+        const content = htmlQuery(html, ".message-content");
+        const setTargets = createHTMLElement("a", { innerHTML: '<i class="fa-solid fa-bullseye"></i>', dataset: { visibility: "owner", tooltip: game.i18n.localize("PF2E-SAVES-HELPER.SetTargets") } });
+        setTargets.addEventListener("click", () => addTargets(message));
+        content?.insertBefore(setTargets, content.firstChild);
+    }
+    
     const savesMessage = message.flags[MODULE_NAME].savesMessage ? game.messages.get(message.flags[MODULE_NAME].savesMessage as string) : undefined;
     const savesFlag = savesMessage?.flags[MODULE_NAME] as SavesFlag | undefined;
 
@@ -818,10 +912,7 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: HTMLElement) {
         const isHealingRoll = (message.rolls[index] as Rolled<DamageRoll>).kinds.has("healing");
         const splash = message.rolls[index]?.options.splashOnly as boolean | undefined ?? false;
 
-        let gmButtons: HTMLElement | undefined = undefined;
-        if (game.user.isGM && savesFlag?.saveInfo?.basic && tokenDocList.length > 0) {
-            gmButtons = renderDamageAllButtons(message, tokenDocList, savesFlag, index);
-        }
+        const gmButtons = game.user.isGM ? renderDamageAllButtons(message, tokenDocList, savesFlag, index) : undefined;
 
         for (let token of tokenDocList) {
             const highlightHeal = isHealingRoll && canApplyHealing(token.actor, healingTraits);

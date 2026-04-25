@@ -122,7 +122,7 @@ function handleSocketMessage(message: SavesHelperSocketMessage) {
 }
 
 async function handleSaveRolled(message: SaveRolledMessage) {
-    if (!game.user.isGM)
+    if (!game.user.isActiveGM)
         return;
 
     const chatMessage = game.messages.get(message.message);
@@ -139,7 +139,7 @@ async function handleSaveRolled(message: SaveRolledMessage) {
 }
 
 function handleUpdateApplied(message: UpdateAppliedMessage) {
-    if (!game.user.isGM)
+    if (!game.user.isActiveGM)
         return;
 
     const damageMessage = game.messages.get(message.message);
@@ -481,7 +481,7 @@ Hooks.on("createMeasuredTemplate", async (measuredTemplate: MeasuredTemplateDocu
         return;
 
     const sourceMessage = game.messages.get(messageId);
-    if (!sourceMessage || !sourceMessage.flags[MODULE_NAME]?.savesMessage || !sourceMessage.isAuthor)
+    if (!sourceMessage || !sourceMessage.flags[MODULE_NAME]?.savesMessage || !sourceMessage.isOwner)
         return;
 
     const savesMessage = game.messages.get(sourceMessage.flags[MODULE_NAME]?.savesMessage as string);
@@ -503,7 +503,6 @@ Hooks.on("createMeasuredTemplate", async (measuredTemplate: MeasuredTemplateDocu
 
 function addSavesMessageListeners(message: ChatMessagePF2e, html: HTMLElement) {
     const savesFlag = message.flags[MODULE_NAME] as SavesFlag;
-    const tokenDocList = savesFlag.targets?.map(t => fromUuidSync(t) as TokenDocumentPF2e).filter(t => t);
     let button = htmlQuery(html, "[data-action='set-targets']");
     button?.addEventListener("click", (event) => addTargets(message, savesFlag.saveInfo?.saveType ?? ""));
 
@@ -591,7 +590,7 @@ Hooks.on("pf2e.reroll", (originalRoll: CheckRoll, reroll: CheckRoll, heroPoint: 
 
 async function onRollCallback(savesMessageId: string, roll: CheckRoll, rollMessage: ChatMessagePF2e) {
     {
-        if (!roll || roll.degreeOfSuccess == null || !roll.total)
+        if (!roll || !roll.degreeOfSuccess || !roll.total)
             return;
 
         if (game.modules.get("dice-so-nice")?.active && rollMessage && (rollMessage as ChatMessageDSN)._dice3danimating)
@@ -609,7 +608,7 @@ async function onRollCallback(savesMessageId: string, roll: CheckRoll, rollMessa
 
         let savesFlag = message.flags[MODULE_NAME] as SavesFlag;
 
-        if (message.isAuthor || game.user.isGM) {
+        if (message.isOwner) {
             const resultEntry = { degreeOfSuccess: roll.degreeOfSuccess, rollValue: roll.total };
             savesFlag.results[uuidConvert(tokenUuid)] = resultEntry;
             ChatMessage.updateDocuments([{
@@ -657,7 +656,7 @@ async function findSavesMessageFromDamageRoll(message: ChatMessagePF2e): Promise
 
     const itemUuid = origin.uuid;
 
-    const messageFound = game.messages.contents.findLast(m => (m.flags[MODULE_NAME] as SavesFlag)?.origin?.uuid === itemUuid);
+    const messageFound = game.messages.contents.slice(-20).findLast(m => (m.flags[MODULE_NAME] as SavesFlag)?.origin?.uuid === itemUuid);
 
     if (!messageFound || messageFound.flags[MODULE_NAME]?.damageMessage)
         return null;

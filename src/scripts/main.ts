@@ -179,12 +179,12 @@ async function updateSavesMessage(messageId: string, sourceMessage: ChatMessageP
     await ChatMessage.updateDocuments([{ _id: messageId, content: getSavesMessageContent(savesFlag), [`flags.${MODULE_NAME}`]: savesFlag }]);
 }
 
-function onSpellMessageCreated(message: ChatMessagePF2e) {
+async function onSpellMessageCreated(message: ChatMessagePF2e) {
     let origin = message.flags[SYSTEM_ID]?.origin;
     if (!origin)
         return;
 
-    const spell = fromUuidSync<SpellPF2e>(origin.uuid);
+    const spell = await fromUuid<SpellPF2e>(origin.uuid);
 
     if (!spell)
         return;
@@ -197,7 +197,7 @@ function onSpellMessageCreated(message: ChatMessagePF2e) {
     if (!spell.system.defense?.save)
         return;
 
-    createSavesMessage(message, message.flags, getSaveInfoFromSpell(spell));
+    await createSavesMessage(message, message.flags, getSaveInfoFromSpell(spell));
 }
 
 function getSaveInfoFromSpell(spell: SpellPF2e): SaveInfo | undefined {
@@ -211,11 +211,11 @@ function getSaveInfoFromSpell(spell: SpellPF2e): SaveInfo | undefined {
     };
 }
 
-function onWeaponMessageCreated(message: ChatMessagePF2e) {
+async function onWeaponMessageCreated(message: ChatMessagePF2e) {
     if (!message._attack)
         return;
 
-    createSavesMessage(message, message.flags, getSaveInfoFromAttack(message._attack))
+    await createSavesMessage(message, message.flags, getSaveInfoFromAttack(message._attack))
 }
 
 function getSaveInfoFromAttack(attack: any): SaveInfo | undefined {
@@ -230,12 +230,12 @@ function getSaveInfoFromAttack(attack: any): SaveInfo | undefined {
 
 const SAVE_REGEX = /<a class="inline-check.+?data-pf2-check="(?:fortitude|reflex|will)".+?<\/a>/g;
 
-function onActionMessageCreated(message: ChatMessagePF2e) {
+async function onActionMessageCreated(message: ChatMessagePF2e) {
     let origin = message.flags[SYSTEM_ID]?.origin;
     if (!origin)
         return;
 
-    const action = fromUuidSync<AbilityItemPF2e>(origin.uuid);
+    const action = await fromUuid<AbilityItemPF2e>(origin.uuid);
 
     if (!action)
         return;
@@ -258,7 +258,7 @@ function onActionMessageCreated(message: ChatMessagePF2e) {
         if (!actor)
             return;
     }
-    createSavesMessage(message, message.flags, getSaveInfoFromDataset(link.dataset, basic, actor));
+    await createSavesMessage(message, message.flags, getSaveInfoFromDataset(link.dataset, basic, actor));
 }
 
 function getSaveInfoFromDataset(dataset: DOMStringMap, basic: boolean, actor?: ActorPF2e): SaveInfo | undefined {
@@ -311,15 +311,17 @@ Hooks.on("createChatMessage", (message: ChatMessagePF2e, options: ChatMessageCre
     let flags = message.flags[SYSTEM_ID];
     if (!flags)
         return;
-    if (flags.context?.type === "spell-cast" && flags.origin) {
-        onSpellMessageCreated(message);
-    } else if (flags.context?.type === "area-fire" || flags.context?.type === "auto-fire") {
-        onWeaponMessageCreated(message);
-    } else if (flags.context?.type === "damage-roll") {
-        onDamageMessageCreated(message);
-    } else if (!flags.context && (flags.origin?.type === "action" || flags.origin?.type === "feat")) {
-        onActionMessageCreated(message);
+    if (flags.origin) {
+        if (flags.origin.type === "spell" && flags.context?.type === "spell-cast")
+            onSpellMessageCreated(message);
+        else if (flags.origin.type === "weapon" && (flags.context?.type === "area-fire" || flags.context?.type === "auto-fire"))
+            onWeaponMessageCreated(message);
+        else if ((flags.origin.type === "action" || flags.origin.type === "feat") && !flags.context)
+            onActionMessageCreated(message);
     }
+
+    if (message.isDamageRoll)
+        onDamageMessageCreated(message);
 });
 
 Hooks.on("preUpdateChatMessage", (message: ChatMessagePF2e, changed: Record<string, ChatMessageFlagsPF2e>, options: unknown, userId: string) => {
@@ -475,7 +477,7 @@ async function getSavesMessageContent(savesFlag: SavesFlag): Promise<string> {
 Hooks.on("renderChatMessageHTML", async (message: ChatMessagePF2e, html: HTMLElement) => {
     if (message.flags[MODULE_NAME]?.sourceMessage)
         addSavesMessageListeners(message, html);
-    else if (message.flags[SYSTEM_ID]?.context?.type === "damage-roll" && message.flags[MODULE_NAME])
+    else if (message.isDamageRoll && message.flags[MODULE_NAME])
         onRenderDamageMessage(message, html);
 });
 
@@ -887,9 +889,9 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: HTMLElement) {
     if (!message.flags[MODULE_NAME])
         return;
 
-    if (message.flags[MODULE_NAME].targets !== undefined) {
+    if (message.flags[MODULE_NAME].targets !== undefined && (game.user.isGM || message.isOwner)) {
         const content = htmlQuery(html, ".message-content");
-        const setTargets = createHTMLElement("a", { innerHTML: '<i class="fa-solid fa-bullseye"></i>', dataset: { visibility: "owner", tooltip: game.i18n.localize("PF2E-SAVES-HELPER.SetTargets") } });
+        const setTargets = createHTMLElement("a", { innerHTML: '<i class="fa-solid fa-bullseye"></i>', dataset: { tooltip: game.i18n.localize("PF2E-SAVES-HELPER.SetTargets") } });
         setTargets.addEventListener("click", () => addTargets(message));
         content?.insertBefore(setTargets, content.firstChild);
     }
@@ -903,7 +905,7 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: HTMLElement) {
 
     const healingTraits = game.settings.get(MODULE_NAME, SETTINGS.APPLY_HEALING) ? getHealingTraitsFromOptions(message.flags[SYSTEM_ID].origin?.rollOptions) : undefined;
 
-    const tokenDocList = targets.map(t => fromUuidSync(t) as TokenDocumentPF2e).filter(t => t && t.isOwner);
+    const tokenDocList = targets.map(t => fromUuidSync(t) as TokenDocumentPF2e).filter(t => t && !t.hidden || game.user.isGM);
 
     const damageApplicationList = htmlQueryAll(html, "section.damage-application");
 
@@ -939,6 +941,9 @@ function onRenderDamageMessage(message: ChatMessagePF2e, html: HTMLElement) {
                 tokenHeader.classList.add(DEGREE_OF_SUCCESS_STRINGS[degreeOfSuccess]);
 
             damageTokenContainer.append(tokenHeader);
+
+            if (!token.isOwner)
+                continue;
 
             let shieldBlockButton: HTMLButtonElement | undefined = undefined;
             if (htmlQuery(damageApplication, "button[data-action='shieldBlock']")) {

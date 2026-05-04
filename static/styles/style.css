@@ -48,6 +48,7 @@
 	padding: 10px 0 10px 0;
 	border-top: 1px solid var(--color-border-divider);
 	border-bottom: 1px solid var(--color-border-divider);
+	display: list-item;
 }
 
 .pf2e-saves-helper .saves-buttons a {

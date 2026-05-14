@@ -1,4 +1,4 @@
-import { AbilityItemPF2e, ActorPF2e, ChatMessageFlagsPF2e, ChatMessagePF2e, CheckContextChatFlag, CheckRoll, DamageRoll, DegreeOfSuccessIndex, DegreeOfSuccessString, ItemOriginFlag, ItemPF2e, RegionDocumentPF2e, SaveType, SpellPF2e, TokenDocumentPF2e, TokenPF2e, ZeroToThree } from "@7h3laughingman/pf2e-types";
+import { AbilityItemPF2e, ActorPF2e, ChatMessageFlagsPF2e, ChatMessagePF2e, CheckContextChatFlag, CheckRoll, DamageRoll, DegreeOfSuccessIndex, DegreeOfSuccessString, ItemOriginFlag, ItemPF2e, RegionDocumentPF2e, SaveType, SpellPF2e, SpellSource, TokenDocumentPF2e, TokenPF2e, ZeroToThree } from "@7h3laughingman/pf2e-types";
 import { Rolled } from "@7h3laughingman/foundry-types/client/dice/roll.mjs";
 import { TokenDocumentUUID } from "@7h3laughingman/foundry-types/common/documents/_module.mjs";
 import { createHTMLElement, htmlQuery, htmlQueryAll } from "@7h3laughingman/pf2e-helpers/utilities";
@@ -15,6 +15,7 @@ const SETTINGS = {
     HIDE_SAVING_THROWS: "hideSavingThrows",
     IGNORE_HEALING_SAVES: "ignoreHealingSaves",
     APPLY_HEALING: "applyHealing",
+    TEMPLATE_WALL_RESTRICTION: "templateWallRestriction",
     SKIP_MULTIPLE_ROLL_DIALOG: "skipMultipleRollDialog",
 };
 
@@ -91,6 +92,15 @@ Hooks.once("init", () => {
         config: true,
         name: "PF2E-SAVES-HELPER.Settings.ApplyHealing",
         hint: "PF2E-SAVES-HELPER.Settings.ApplyHealingHint",
+        type: Boolean,
+        default: true,
+        requiresReload: false
+    });
+    game.settings.register(MODULE_NAME, SETTINGS.TEMPLATE_WALL_RESTRICTION, {
+        scope: "world",
+        config: true,
+        name: "PF2E-SAVES-HELPER.Settings.TemplateWallRestriction",
+        hint: "PF2E-SAVES-HELPER.Settings.TemplateWallRestrictionHint",
         type: Boolean,
         default: true,
         requiresReload: false
@@ -180,13 +190,9 @@ async function updateSavesMessage(messageId: string, sourceMessage: ChatMessageP
 }
 
 async function onSpellMessageCreated(message: ChatMessagePF2e) {
-    let origin = message.flags[SYSTEM_ID]?.origin;
-    if (!origin)
-        return;
+    const spell = message.item as SpellPF2e | null;
 
-    const spell = await fromUuid<SpellPF2e>(origin.uuid);
-
-    if (!spell)
+    if (!spell || spell.type !== "spell")
         return;
 
     // if the spell has variants, we deal with it in the message update
@@ -331,13 +337,13 @@ Hooks.on("preUpdateChatMessage", (message: ChatMessagePF2e, changed: Record<stri
         // Handle spell variants
         let origin = message.flags[SYSTEM_ID]?.origin;
         if (game.user.id === userId && changedFlags.context?.type === "spell-cast" && changedFlags.origin && origin) {
-            const spell = fromUuidSync<SpellPF2e>(origin.uuid);
+            const spell = message.item as SpellPF2e | null;
             let noSave = false;
             if (!spell)
                 noSave = true;
-            else if (spell.hasVariants) {
+            else {
                 const changedOrigin = changedFlags.origin;
-                if (changedOrigin.variant) {
+                if (changedOrigin?.variant) {
                     const variant = spell.overlays.overrideVariants.find(s => changedOrigin.variant && s.variantId === changedOrigin.variant.overlays[0]);
                     if (!variant || !variant.system.defense?.save)
                         noSave = true;
@@ -507,6 +513,17 @@ Hooks.on("createMeasuredTemplate", async (measuredTemplate: MeasuredTemplateDocu
     addTargets(savesMessage, saveType);
 });
 
+Hooks.on("preCreateRegion", (region: RegionDocumentPF2e) => {
+    if (!game.settings.get(MODULE_NAME, SETTINGS.TEMPLATE_WALL_RESTRICTION))
+        return;
+    if (region.flags?.[SYSTEM_ID]?.origin && region.levels.size === 0) {
+        region.updateSource({
+            levels: [(canvas as any).level.id],
+            ["restriction.enabled"]: true
+        });
+    }
+});
+
 Hooks.on("createRegion", (region: RegionDocumentPF2e, options: unknown, userId: string) => {
     let messageId = region.flags[SYSTEM_ID]?.messageId;
     if (!messageId || game.userId !== userId)
@@ -538,7 +555,7 @@ function targetRegion(region: RegionDocumentPF2e, messageId: string) {
     if (!saveType)
         return;
 
-    const tokenList = [...region.parent?.tokens.filter(t => t.testInsideRegion(region)).map(t => t.id) ?? []];
+    const tokenList = [...region.parent?.tokens.filter(t => t.testInsideRegion(region) && filterTarget(t, true, saveType)).map(t => t.id) ?? []];
     canvas.tokens.setTargets(tokenList);
     addTargets(savesMessage, saveType);
 }
@@ -713,7 +730,7 @@ async function updateSaveMessageResult(message: ChatMessagePF2e, results: Record
     }
 }
 
-function filterTarget(target: TokenPF2e, ignoreDead: boolean, saveStatistic: string | undefined = undefined): boolean {
+function filterTarget(target: TokenPF2e | TokenDocumentPF2e, ignoreDead: boolean, saveStatistic: string | undefined = undefined): boolean {
     if (!target.actor)
         return false;
     if (saveStatistic && !target.actor?.getStatistic(saveStatistic))
@@ -1164,7 +1181,7 @@ function getTemplateTokens(measuredTemplate: MeasuredTemplateDocumentPF2e | Meas
     const grid = canvas.interface.grid;
     const dimensions = canvas.dimensions;
     const template =
-        measuredTemplate instanceof MeasuredTemplateDocument
+        measuredTemplate instanceof MeasuredTemplateDocumentPF2e
             ? measuredTemplate.object
             : measuredTemplate;
     if (!canvas.scene || !template?.highlightId || !grid || !dimensions) return [];
